@@ -1,0 +1,3 @@
+var documenterSearchIndex = {"docs":
+[{"location":"","page":"Home","title":"Home","text":"CurrentModule = TruncatedMVN","category":"page"},{"location":"#TruncatedMVN","page":"Home","title":"TruncatedMVN","text":"","category":"section"},{"location":"","page":"Home","title":"Home","text":"Documentation for TruncatedMVN.","category":"page"},{"location":"","page":"Home","title":"Home","text":"","category":"page"},{"location":"","page":"Home","title":"Home","text":"Modules = [TruncatedMVN]","category":"page"},{"location":"#TruncatedMVN.lnNormalProb-Tuple{Any, Any}","page":"Home","title":"TruncatedMVN.lnNormalProb","text":"lnNormalProb(a, b)\n\nAccurately compute ln(P(a<Z<b)) where Z~N(0,1).\n\n\n\n\n\n","category":"method"}]
+}
