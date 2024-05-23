@@ -1,0 +1,13 @@
+name = "TruncatedMVN"
+uuid = "502039d7-87d7-456d-8cc8-96307cceeee2"
+authors = ["Eliassj <elias.sjolin@gmail.com> and contributors"]
+version = "1.0.0-DEV"
+
+[compat]
+julia = "1.8"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Test"]
