@@ -1,10 +1,26 @@
+#=
+Truncated multivariate normal distribution per reference below. Based on MATLAB implementation by Zdravko Botev and python implementation in the DSM-BOCD paper (both linked below).
+
+- MATLAB implementation: Zdravko Botev (2024). Truncated Normal and Student's t-distribution toolbox (https://www.mathworks.com/matlabcentral/fileexchange/53796-truncated-normal-and-student-s-t-distribution-toolbox), MATLAB Central File Exchange. Retrieved May 24, 2024. 
+- Python/DSM-BOCD implementation: https://github.com/maltamiranomontero/DSM-bocd/blob/main/utils/truncated_mvn_sampler.py
+
+Reference: Botev, Z. I., (2016), The normal law under linear restrictions: simulation and estimation via minimax tilting,
+           Journal of the Royal Statistical Society Series B, 79, issue 1, p. 125-148
+=#
+
+
 module TruncatedMVN
 
-using Distributions
 import LinearAlgebra: diag, I
-import SpecialFunctions: erfcx, erfc
+import SpecialFunctions: erfcx, erfc, erfcinv
 using NonlinearSolve
 
+"""
+    TruncatedMVNormal{S<:AbstractArray{<:AbstractFloat},T<:AbstractVector{<:AbstractFloat},U<:Integer,V<:AbstractFloat,P<:AbstractVector{<:Integer}}
+
+Truncated multivariate normal distribution with minimax tilting-based sampling.
+
+"""
 mutable struct TruncatedMVNormal{S<:AbstractArray{<:AbstractFloat},T<:AbstractVector{<:AbstractFloat},U<:Integer,V<:AbstractFloat,P<:AbstractVector{<:Integer}}
     dim::U
     mu::T
@@ -21,6 +37,18 @@ mutable struct TruncatedMVNormal{S<:AbstractArray{<:AbstractFloat},T<:AbstractVe
     x::T
     psistar::T
 
+    @doc """
+         TruncatedMVNormal(mu::T, cov::S, lb::T, ub::T) where {T<:AbstractVector{<:AbstractFloat},S<:AbstractArray{<:AbstractFloat}}
+
+     Inner constructor of the [`TruncatedMVN.TruncatedMVNormal`](@ref) distribution.
+
+     # Arguments
+
+     - `mu::T`: D-dimensional vector of means.
+     - `cov::S`: DxD-dimensional covariance matrix.
+     - `lb::T`: D-dimensional vector of lower bounds.
+     - `ub::T`: D-dimensional vector of upper bounds.
+     """
     function TruncatedMVNormal(mu::T, cov::S, lb::T, ub::T) where {T<:AbstractVector{<:AbstractFloat},S<:AbstractArray{<:AbstractFloat}}
         d = length(mu)
         if size(cov, 1) != size(cov, 2)
@@ -39,8 +67,13 @@ mutable struct TruncatedMVNormal{S<:AbstractArray{<:AbstractFloat},T<:AbstractVe
     end # Inner TruncatedMVNormal constructor
 end # TruncatedMVNormal struct
 
-function sample(d::TruncatedMVNormal, n::Integer)
-    if isempty(d.pistar)
+"""
+    sample(d::TruncatedMVNormal, n::Integer, max_iter::Integer=10000)
+
+Sample `n` samples from the distribution `d`.
+"""
+function sample(d::TruncatedMVNormal, n::Integer, max_iter::Integer=10000)
+    if isempty(d.psistar)
         compute_factors!(d)
     end
 
@@ -49,9 +82,143 @@ function sample(d::TruncatedMVNormal, n::Integer)
     accept, iteration = 0, 0
 
     while accept < n
-        #
+        logpr, Z = mvnrnd(d, n, d.mu)
 
+        idx = @. -log($(rand(n))) > (d.psistar - logpr)
+
+        rv = hcat(rv, Z[:, idx])
+
+        accept += size(rv, 2)
+
+        iteration += 1
+
+        if iteration > 1000
+            @warn "Acceptance prob. less than 0.001"
+        elseif iteration > max_iter
+            @warn "Max iterations $(max_iter) reached. Sample is only approximately distributed."
+            accept = n
+            rv = hcat(rv, Z)
+        end
     end
+    # Finish and postprocess
+    order = sortperm(d.perm)
+    rv = rv[:, begin:n]
+    rv = d.L_unscaled * rv
+    rv = rv[order, :]
+
+    # retransfer to original mean
+    rv .+= repeat(reshape(d.orig_mu, (d.dim, 1)), 1, size(rv, 2))
+    return rv
+end
+
+
+function mvnrnd(d::TruncatedMVNormal, n::Integer, mud)
+    mu = deepcopy(mud)
+    mu[d.dim] = 0.0
+    z = zeros(Float64, d.dim, n)
+    logpr = 0.0
+    for k in 1:d.dim
+        # Multiply L * Z
+        col = d.L[[2], begin:k] * z[begin:k, :]
+        # Limits of truncation
+        tl = @. d.lb[k] - mu[k] - col
+        tu = @. d.ub[k] - mu[k] - col
+
+        z[k, :] = mu[k] .+ trandn(tl, tu)
+
+        logpr += (@.($(lnNormalProb(tl, tu)) + 0.5 * mu[k]^2 - mu[k] * z[k, :]))[1]
+    end
+    return logpr, z
+end
+
+function trandn(lb, ub)
+    length(lb) != length(ub) && throw(DimensionMismatch("Lengths of lb and ub must be equal"))
+
+    x = similar(ub)
+
+    a = 0.66 # Treshold from MATLAB implementation
+    l = reshape(lb, (1, length(lb)))
+    u = reshape(ub, (1, length(ub)))
+    # Consider 3 cases
+    idx1 = vec(l .> a)
+    if any(idx1)
+        tl = l[:, idx1]
+        tu = u[:, idx1]
+        x[idx1] = ntail(tl, tu)
+    end
+    idx2 = vec(ub .< -a)
+    if any(idx2)
+        tl = -ub[idx2]
+        tu = -lb[idx2]
+        x[idx2] = ntail(tl, tu)
+    end
+    idx3 = .!(idx1 .| idx2)
+    if any(idx3)
+        tl = lb[idx3]
+        tu = ub[idx3]
+        x[idx3] = tn(tl, tu)
+    end
+    return x
+end
+
+function tn(lb, ub, sw=2.0)
+    x = similar(ub)
+    # abs(ub-lb) > sw -> use accept-reject
+    idx1 = @. abs(ub - lb) > sw
+    if any(idx1)
+        tl = lb[idx1]
+        tu = ub[idx1]
+        x[idx1] = trnd(tl, tu)
+    end
+    # For other cases use inverse-transform
+    idx2 = .!idx1
+    if any(idx2)
+        tl = lb[idx2]
+        tu = ub[idx2]
+        pl = @. erfc(tl / sqrt(2)) / 2
+        pu = @. erfc(tu / sqrt(2)) / 2
+        x[idx2] = @. sqrt(2) * erfcinv(2 * (pl - (pl - pu) * $(rand(length(tl)))))
+    end
+    return x
+end
+
+function trnd(lb, ub)
+    x = randn(length(lb))
+
+    test = @. (x < lb) | (x > ub)
+    idx = findall(test)
+    d = length(idx)
+    while d > 0
+        ly = lb[idx]
+        uy = ub[idx]
+        y = randn(length(uy))
+        idx2 = @. (y > ly) & (y < uy)
+        x[idx[idx2]] = y[idx2]
+        idx = idx[.!idx2]
+        d = length(idx)
+    end
+
+    return x
+end
+
+function ntail(lb, ub)
+    c = @. lb^2 / 2
+    n = length(lb)
+    f = @. exp(c - ub^2 / 2) - 1
+    x = @. c - log(1 + $(rand(n)) * f)
+    props = @. ($(rand(n))^2 * x)
+    rejected = findall(props .> c) # Find rejected
+    d = length(rejected)
+    while d > 0
+        cy = c[rejected]
+        y = @. cy - log(1 + $(rand(d)) * f[rejected])
+        idx = findall((rand(d) .^ 2 .* y) .< cy) # Find accepted
+        x[rejected[idx]] = y[idx]
+        deleteat!(rejected, idx)
+        d = length(rejected)
+    end
+
+    return @. sqrt(2 * x)
 end
 
 function compute_factors!(d::TruncatedMVNormal)
@@ -77,13 +244,13 @@ function compute_factors!(d::TruncatedMVNormal)
     d.x = sol.u[begin:d.dim]
     d.mu = sol.u[(d.dim+1):end]
 
-    d.psistar = psy(d, d.x, d.mu)
+    d.psistar = [psy(d, d.x, d.mu)]
 
 end
 
-function psy(d::TruncatedMVNormal, x, mu)
-    x = deepcopy(x)
-    mu = deepcopy(mu)
+function psy(d::TruncatedMVNormal, xd, mud)
+    x = deepcopy(xd)
+    mu = deepcopy(mud)
     x[d.dim] = 0.0
     mu[d.dim] = 0.0
 
