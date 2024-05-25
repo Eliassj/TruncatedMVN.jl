@@ -22,7 +22,7 @@ TruncatedMVNormal{S<:AbstractArray{<:AbstractFloat},T<:AbstractVector{<:Abstract
 Truncated multivariate normal distribution with minimax tilting-based sampling.
 
 
-[source](https://github.com/Eliassj/TruncatedMVN.jl/blob/beb130f96afc3dbb70432305a3474bff3a72f091/src/TruncatedMVN.jl#L16-L21)
+[source](https://github.com/Eliassj/TruncatedMVN.jl/blob/11ad953766248812342dcbd9adff57d379a24493/src/TruncatedMVN.jl#L16-L21)
 
 </div>
 <br>
@@ -50,7 +50,7 @@ Inner constructor of the [`TruncatedMVN.TruncatedMVNormal`](/index#TruncatedMVN.
   
 
 
-[source](https://github.com/Eliassj/TruncatedMVN.jl/blob/beb130f96afc3dbb70432305a3474bff3a72f091/src/TruncatedMVN.jl#L38-L49)
+[source](https://github.com/Eliassj/TruncatedMVN.jl/blob/11ad953766248812342dcbd9adff57d379a24493/src/TruncatedMVN.jl#L38-L49)
 
 </div>
 <br>
@@ -68,7 +68,7 @@ sample(d::TruncatedMVNormal, n::Integer, max_iter::Integer=10000)
 Sample `n` samples from the distribution `d`.
 
 
-[source](https://github.com/Eliassj/TruncatedMVN.jl/blob/beb130f96afc3dbb70432305a3474bff3a72f091/src/TruncatedMVN.jl#L68-L72)
+[source](https://github.com/Eliassj/TruncatedMVN.jl/blob/11ad953766248812342dcbd9adff57d379a24493/src/TruncatedMVN.jl#L68-L72)
 
 </div>
 <br>
