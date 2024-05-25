@@ -1,5 +1,6 @@
 using TruncatedMVN
 using Documenter
+using DocumenterVitepress
 
 DocMeta.setdocmeta!(TruncatedMVN, :DocTestSetup, :(using TruncatedMVN); recursive=true)
 
@@ -7,11 +8,9 @@ makedocs(;
     modules=[TruncatedMVN],
     authors="Eliassj <elias.sjolin@gmail.com> and contributors",
     sitename="TruncatedMVN.jl",
-    format=Documenter.HTML(;
-        canonical="https://Eliassj.github.io/TruncatedMVN.jl",
-        edit_link="master",
-        assets=String[],
-    ),
+    format=MarkdownVitepress(
+         repo="https://Eliassj.github.io/TruncatedMVN.jl"
+         ),
     pages=[
         "Home" => "index.md",
     ],

@@ -1,17 +1,15 @@
 #=
-Truncated multivariate normal distribution per reference below. Based on MATLAB implementation by Zdravko Botev and python implementation in the DSM-BOCD paper (both linked below).
+Truncated multivariate normal distribution per reference below. Based on MATLAB implementation by Zdravko Botev and python implementation by Paul Brunzema (both linked below).
 
 - MATLAB implementation: Zdravko Botev (2024). Truncated Normal and Student's t-distribution toolbox (https://www.mathworks.com/matlabcentral/fileexchange/53796-truncated-normal-and-student-s-t-distribution-toolbox), MATLAB Central File Exchange. Retrieved May 24, 2024. 
-- Python/DSM-BOCD implementation: https://github.com/maltamiranomontero/DSM-bocd/blob/main/utils/truncated_mvn_sampler.py
 
-Reference: Botev, Z. I., (2016), The normal law under linear restrictions: simulation and estimation via minimax tilting,
-           Journal of the Royal Statistical Society Series B, 79, issue 1, p. 125-148
+- Python implementation: https://github.com/brunzema/truncated-mvn-sampler
+
 =#
-
 
 module TruncatedMVN
 
-import LinearAlgebra: diag, I
+import LinearAlgebra: diag, I, diagm
 import SpecialFunctions: erfcx, erfc, erfcinv
 using NonlinearSolve
 
@@ -114,9 +112,9 @@ end
 
 function mvnrnd(d::TruncatedMVNormal, n::Integer, mud)
     mu = deepcopy(mud)
-    mu[d.dim] = 0.0
+    push!(mu, 0.0)
     z = zeros(Float64, d.dim, n)
-    logpr = 0.0
+    logpr = fill(0.0, n)
     for k in 1:d.dim
         # Multiply L * Z
         col = d.L[[2], begin:k] * z[begin:k, :]
@@ -126,12 +124,12 @@ function mvnrnd(d::TruncatedMVNormal, n::Integer, mud)
 
         z[k, :] = mu[k] .+ trandn(tl, tu)
 
-        logpr += (@.($(lnNormalProb(tl, tu)) + 0.5 * mu[k]^2 - mu[k] * z[k, :]))[1]
+        logpr .+= (@.($(lnNormalProb(tl, tu)) + 0.5 * mu[k]^2 - mu[k] * z[k, :]))[1]
     end
     return logpr, z
 end
 
-function trandn(lb, ub)
+function trandn(lb::T, ub::T) where {T}
     length(lb) != length(ub) && throw(DimensionMismatch("Lengths of lb and ub must be equal"))
 
     x = similar(ub)
@@ -161,7 +159,7 @@ function trandn(lb, ub)
     return x
 end
 
-function tn(lb, ub, sw=2.0)
+function tn(lb::T, ub::T, sw=2.0) where {T}
     x = similar(ub)
     # abs(ub-lb) > sw -> use accept-reject
     idx1 = @. abs(ub - lb) > sw
@@ -182,7 +180,7 @@ function tn(lb, ub, sw=2.0)
     return x
 end
 
-function trnd(lb, ub)
+function trnd(lb::T, ub::T) where {T}
     x = randn(length(lb))
 
     test = @. (x < lb) | (x > ub)
@@ -201,7 +199,7 @@ function trnd(lb, ub)
     return x
 end
 
-function ntail(lb, ub)
+function ntail(lb::T, ub::T) where {T}
     c = @. lb^2 / 2
     n = length(lb)
     f = @. exp(c - ub^2 / 2) - 1
@@ -234,25 +232,23 @@ function compute_factors!(d::TruncatedMVNormal)
 
     d.L = scaled_L - I
 
-    x0 = zeros(2 * d.dim)
+    x0 = zeros(2 * (d.dim - 1))
     p = [d.L, d.lb, d.ub]
 
     fun = NonlinearFunction(gradpsi, jac=jacpsi)
     prob = NonlinearProblem(fun, x0, p)
     sol = solve(prob)
 
-    d.x = sol.u[begin:d.dim]
-    d.mu = sol.u[(d.dim+1):end]
+    d.x = sol.u[begin:d.dim-1]
+    d.mu = sol.u[d.dim:end]
 
     d.psistar = [psy(d, d.x, d.mu)]
 
 end
 
 function psy(d::TruncatedMVNormal, xd, mud)
-    x = deepcopy(xd)
-    mu = deepcopy(mud)
-    x[d.dim] = 0.0
-    mu[d.dim] = 0.0
+    x = vcat(xd, [0.0])
+    mu = vcat(mud, [0.0])
 
     c = d.L * x
 
@@ -265,16 +261,14 @@ end
 function gradpsi(y, p)
     L, l, u = p
     d = length(u)
-
     c = zeros(Float64, d)
-
     mu = deepcopy(c)
     x = deepcopy(c)
 
-    x = y[begin:d]
-    mu = y[(d+1):end]
+    x[begin:d-1] = y[begin:d-1]
+    mu[begin:d-1] = y[d:end]
 
-    c[2:d-1] = L[2:d-1, :] * x
+    c[2:d] = L[2:d, :] * x
     lt = @. l - mu - c
     ut = @. u - mu - c
 
@@ -284,27 +278,24 @@ function gradpsi(y, p)
     P = pl - pu
 
     # Gradient
-    dfdx = -mu[1:d] + transpose((transpose(P) * L[:, 1:d]))
+    dfdx = -mu[1:d-1] + transpose((transpose(P) * L[:, 1:d-1]))
     dfdm = @. mu - x + P
     grad = cat(dfdx, dfdm[begin:end-1], dims=1)
-
-
+    # NOTE: indexing is wrong here or in compute_factors.
     return grad
 end
 
 function jacpsi(y, p)
     L, l, u = p
     d = length(u)
-
     c = zeros(Float64, d)
-
     mu = deepcopy(c)
     x = deepcopy(c)
 
-    x = y[begin:d]
-    mu = y[(d+1):end]
+    x[begin:d-1] = y[begin:d-1]
+    mu[begin:d-1] = y[d:end]
 
-    c[2:d-1] = L[2:d-1, :] * x
+    c[2:d] = L[2:d, :] * x
     lt = @. l - mu - c
     ut = @. u - mu - c
 
@@ -314,8 +305,8 @@ function jacpsi(y, p)
     P = pl - pu
 
     # Jacobian
-    @view(lt[isinf.(lt)]) .= 0.0
-    @view(ut[isinf.(ut)]) .= 0.0
+    lt[isinf.(lt)] .= 0.0
+    ut[isinf.(ut)] .= 0.0
 
     dP = @. -P^2 + lt * pl - ut * pu
     DL = repeat(reshape(dP, (d, 1)), 1, d) .* L
@@ -324,7 +315,9 @@ function jacpsi(y, p)
     mx = mx[begin:end-1, begin:end-1]
     xx = xx[begin:end-1, begin:end-1]
 
-    hvcat((2, 2), xx, transpose(mx), mx, 1 .+ dP[begin:end-1])
+
+    out = hvcat((2, 2), xx, transpose(mx), mx, diagm(1 .+ dP[begin:end-1]))
+    return out
 end
 
 function colperm(d::TruncatedMVNormal)
@@ -332,12 +325,12 @@ function colperm(d::TruncatedMVNormal)
     L = fill(0.0, size(d.cov))
     z = fill(0.0, length(d.orig_mu))
 
-    for j in perm
+    for j in deepcopy(perm)
         pr = fill(Inf, size(z))
         i = j:d.dim
         D = diag(d.cov)
         s = D[i] .- sum(L[i, 1:j] .^ 2, dims=2)
-        s[s.<0.0] .= 0.0
+        s[s.<0.0] .= 1.0e-15
         @. s = sqrt(s)
 
         tl = (d.lb[i] .- L[i, 1:j] * z[1:j]) ./ s
@@ -379,12 +372,12 @@ function colperm(d::TruncatedMVNormal)
     return L, perm
 end
 
-"""
+#=
     lnNormalProb(a, b)
 
 Accurately compute `ln(P(a<Z<b))` `where Z~N(0,1)`.
-"""
-function lnNormalProb(a, b)
+=#
+function lnNormalProb(a::T, b::T) where {T}
     p = zeros(eltype(a), size(a))
 
     # b>a>0
