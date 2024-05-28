@@ -13,6 +13,9 @@ import LinearAlgebra: diag, I, diagm
 import SpecialFunctions: erfcx, erfc, erfcinv
 using NonlinearSolve
 
+export TruncatedMVNormal
+export sample
+
 """
     TruncatedMVNormal{S<:AbstractArray{<:AbstractFloat},T<:AbstractVector{<:AbstractFloat},U<:Integer,V<:AbstractFloat,P<:AbstractVector{<:Integer}}
 
@@ -38,27 +41,32 @@ mutable struct TruncatedMVNormal{S<:AbstractArray{<:AbstractFloat},T<:AbstractVe
     @doc """
          TruncatedMVNormal(mu::T, cov::S, lb::T, ub::T) where {T<:AbstractVector{<:AbstractFloat},S<:AbstractArray{<:AbstractFloat}}
 
-     Inner constructor of the [`TruncatedMVN.TruncatedMVNormal`](@ref) distribution.
+    Inner constructor of the [`TruncatedMVN.TruncatedMVNormal`](@ref) distribution.
 
-     # Arguments
+    Generates a truncated multivariate normal distribution which may be accurately sampled from using [`TruncatedMVN.sample`](@ref).
 
-     - `mu::T`: D-dimensional vector of means.
-     - `cov::S`: DxD-dimensional covariance matrix.
-     - `lb::T`: D-dimensional vector of lower bounds.
-     - `ub::T`: D-dimensional vector of upper bounds.
-     """
+    # Arguments
+
+    - `mu::T`: D-dimensional vector of means.
+    - `cov::S`: DxD-dimensional covariance matrix.
+    - `lb::T`: D-dimensional vector of lower bounds.
+    - `ub::T`: D-dimensional vector of upper bounds.
+
+    Bounds may be `-Inf`/`Inf`.
+
+    """
     function TruncatedMVNormal(mu::T, cov::S, lb::T, ub::T) where {T<:AbstractVector{<:AbstractFloat},S<:AbstractArray{<:AbstractFloat}}
         d = length(mu)
         if size(cov, 1) != size(cov, 2)
-            throw(DimensionMismatch("cov matrix must be square!"))
+            throw(DimensionMismatch("cov matrix must be square"))
         end
 
         if length(lb) != d || size(cov, 1) != d || length(ub) != d
-            throw(DimensionMismatch("Dimensions of mu, lb, ub and cov must match each other!"))
+            throw(DimensionMismatch("Dimensions of mu, lb, ub and cov must match each other"))
         end
 
         if any(ub .<= lb)
-            throw(ArgumentError("All upper bounds (ub) must be greater than all lower bounds (lb)!"))
+            throw(ArgumentError("All upper bounds (ub) must be greater than all lower bounds (lb)"))
         end
 
         new{typeof(cov),typeof(mu),typeof(d),Float64,Vector{Int64}}(d, Vector{eltype(mu)}(), mu, cov, lb .- mu, ub .- mu, lb, ub, similar(cov), similar(cov), 10.0e-15, [], [], [])
@@ -69,6 +77,8 @@ end # TruncatedMVNormal struct
     sample(d::TruncatedMVNormal, n::Integer, max_iter::Integer=10000)
 
 Sample `n` samples from the distribution `d`.
+
+Returns an D x n `Matrix` of samples where D is the dimension of the distribution `d`.
 """
 function sample(d::TruncatedMVNormal, n::Integer, max_iter::Integer=10000)
     if isempty(d.psistar)
@@ -220,7 +230,7 @@ function ntail(lb::T, ub::T) where {T}
 end
 
 function compute_factors!(d::TruncatedMVNormal)
-    d.L_unscaled, d.perm = colperm(d)
+    d.L_unscaled, d.perm = colperm!(d)
 
     D = diag(d.L_unscaled)
     any(D .< 1.0e-15) && @warn "Method might fail as covariance matrix is singular!"
@@ -320,7 +330,7 @@ function jacpsi(y, p)
     return out
 end
 
-function colperm(d::TruncatedMVNormal)
+function colperm!(d::TruncatedMVNormal)
     perm = collect(1:d.dim)
     L = fill(0.0, size(d.cov))
     z = fill(0.0, length(d.orig_mu))
@@ -355,15 +365,15 @@ function colperm(d::TruncatedMVNormal)
         s = d.cov[j, j] - sum(L[j, 1:j] .^ 2)
         if s < -0.01
             throw(DomainError(s, "Sigma is not a positive semi-definite"))
-        elseif s < 0
+        elseif s < 0.0
             s = 1.0e-15
         end
         L[j, j] = sqrt(s)
         new_L = d.cov[(j+1):d.dim, j] - L[(j+1):d.dim, 1:j] * L[j, 1:j]
         L[(j+1):d.dim, j] = new_L ./ L[j, j]
 
-        tl = ((d.lb[j] .- L[[j], 1:(j)] * z[1:j]) ./ L[j, j])
-        tu = ((d.ub[j] .- L[[j], 1:(j)] * z[1:j]) ./ L[j, j])
+        tl = ((d.lb[j] .- L[[j], 1:j] * z[1:j]) ./ L[j, j])
+        tu = ((d.ub[j] .- L[[j], 1:j] * z[1:j]) ./ L[j, j])
 
         w = lnNormalProb(tl, tu)
         z[j] = (@. exp(-0.5 * tl[1]^2 - w[1]) - exp.(-0.5 * tu[1]^2 - w[1])) / sqrt(2π)
