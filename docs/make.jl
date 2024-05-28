@@ -17,6 +17,8 @@ makedocs(;
     format=MarkdownVitepress(
         deploy_url="https://Eliassj.github.io/TruncatedMVN.jl",
         repo="github.com/Eliassj/TruncatedMVN.jl",
+        devbranch="master",
+        devurl="dev"
     ),
     pages=[
         "Home" => "index.md",
@@ -24,6 +26,7 @@ makedocs(;
 
 deploydocs(;
     repo="github.com/Eliassj/TruncatedMVN.jl",
+    target="build",
     devbranch="master",
     branch="gh-pages",
     push_preview=false
