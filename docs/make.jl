@@ -12,17 +12,18 @@ bib = CitationBibliography(
 makedocs(;
     plugins=[bib],
     modules=[TruncatedMVN],
-    authors="Eliassj <elias.sjolin@gmail.com> and contributors",
+    authors="Elias Sjölin <elias.sjolin@gmail.com> and contributors",
     sitename="TruncatedMVN.jl",
     format=MarkdownVitepress(
-        repo="https://eliassj.github.io/TruncatedMVN.jl",
+        deploy_url="https://Eliassj.github.io/TruncatedMVN.jl",
+        repo="github.com/Eliassj/TruncatedMVN.jl",
     ),
     pages=[
         "Home" => "index.md",
     ],)
 
 deploydocs(;
-    repo="github.com/eliassj/TruncatedMVN.jl",
+    repo="github.com/Eliassj/TruncatedMVN.jl",
     devbranch="master",
     branch="gh-pages",
     push_preview=false
