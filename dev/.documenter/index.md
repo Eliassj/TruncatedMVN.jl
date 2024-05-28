@@ -1,13 +1,30 @@
+---
+layout: home
+
+hero:
+  name: "TruncatedMVN.jl"
+  tagline: Truncated multivariate normal distribution with exact sampling
+
+
+---
+
+
 
 
 
 # TruncatedMVN {#TruncatedMVN}
 
-Documentation for [TruncatedMVN](https://github.com/Eliassj/TruncatedMVN.jl).
-- [`TruncatedMVN.TruncatedMVNormal`](#TruncatedMVN.TruncatedMVNormal)
-- [`TruncatedMVN.TruncatedMVNormal`](#TruncatedMVN.TruncatedMVNormal-Union{Tuple{S},%20Tuple{T},%20Tuple{T,%20S,%20T,%20T}}%20where%20{T<:(AbstractVector{<:AbstractFloat}),%20S<:(AbstractArray{<:AbstractFloat})})
-- [`TruncatedMVN.sample`](#TruncatedMVN.sample)
+Julia reimplementation of a truncated multivariate normal distribution with perfect sampling.
 
+Distribution and sampling method by [[1](/index#Botev_2017)].
+
+Code based on MATLAB implementation by Zdravko Botev and Python implementation by Paul Brunzema. These may be found here: [MATLAB by Botev](https://mathworks.com/matlabcentral/fileexchange/53792-truncated-multivariate-normal-generator), [Python by Brunzema](https://github.com/brunzema/truncated-mvn-sampler)
+
+Exports 1 struct + its constructor and 1 function:
+- [`TruncatedMVN.TruncatedMVNormal`](/index#TruncatedMVN.TruncatedMVNormal): Struct and constructor for initializing the distribution.
+  
+- [`TruncatedMVN.sample`](/index#TruncatedMVN.sample): Exact sampling from the distribution.
+  
 <div style='border-width:1px; border-style:solid; border-color:black; padding: 1em; border-radius: 25px;'>
 <a id='TruncatedMVN.TruncatedMVNormal' href='#TruncatedMVN.TruncatedMVNormal'>#</a>&nbsp;<b><u>TruncatedMVN.TruncatedMVNormal</u></b> &mdash; <i>Type</i>.
 
@@ -22,7 +39,7 @@ TruncatedMVNormal{S<:AbstractArray{<:AbstractFloat},T<:AbstractVector{<:Abstract
 Truncated multivariate normal distribution with minimax tilting-based sampling.
 
 
-[source](https://github.com/Eliassj/TruncatedMVN.jl/blob/11ad953766248812342dcbd9adff57d379a24493/src/TruncatedMVN.jl#L16-L21)
+[source](https://github.com/Eliassj/TruncatedMVN.jl/blob/762ed6a08c92d2fa9d3cf1f6132835c07463998d/src/TruncatedMVN.jl#L19-L24)
 
 </div>
 <br>
@@ -33,11 +50,13 @@ Truncated multivariate normal distribution with minimax tilting-based sampling.
 
 
 ```julia
-TruncatedMVNormal(mu::T, cov::S, lb::T, ub::T) where {T<:AbstractVector{<:AbstractFloat},S<:AbstractArray{<:AbstractFloat}}
+ TruncatedMVNormal(mu::T, cov::S, lb::T, ub::T) where {T<:AbstractVector{<:AbstractFloat},S<:AbstractArray{<:AbstractFloat}}
 ```
 
 
 Inner constructor of the [`TruncatedMVN.TruncatedMVNormal`](/index#TruncatedMVN.TruncatedMVNormal) distribution.
+
+Generates a truncated multivariate normal distribution which may be accurately sampled from using [`TruncatedMVN.sample`](/index#TruncatedMVN.sample).
 
 **Arguments**
 - `mu::T`: D-dimensional vector of means.
@@ -49,8 +68,10 @@ Inner constructor of the [`TruncatedMVN.TruncatedMVNormal`](/index#TruncatedMVN.
 - `ub::T`: D-dimensional vector of upper bounds.
   
 
+Bounds may be `-Inf`/`Inf`.
 
-[source](https://github.com/Eliassj/TruncatedMVN.jl/blob/11ad953766248812342dcbd9adff57d379a24493/src/TruncatedMVN.jl#L38-L49)
+
+[source](https://github.com/Eliassj/TruncatedMVN.jl/blob/762ed6a08c92d2fa9d3cf1f6132835c07463998d/src/TruncatedMVN.jl#L41-L57)
 
 </div>
 <br>
@@ -67,8 +88,18 @@ sample(d::TruncatedMVNormal, n::Integer, max_iter::Integer=10000)
 
 Sample `n` samples from the distribution `d`.
 
+Returns an D x n `Matrix` of samples where D is the dimension of the distribution `d`.
 
-[source](https://github.com/Eliassj/TruncatedMVN.jl/blob/11ad953766248812342dcbd9adff57d379a24493/src/TruncatedMVN.jl#L68-L72)
+
+[source](https://github.com/Eliassj/TruncatedMVN.jl/blob/762ed6a08c92d2fa9d3cf1f6132835c07463998d/src/TruncatedMVN.jl#L76-L82)
 
 </div>
 <br>
+
+# References {#References}
+
+***
+# Bibliography
+
+1. Z. I. Botev. [_The normal law under linear restrictions: Simulation and estimation via minimax tilting_](http://dx.doi.org/10.1111/rssb.12162). [Journal of the Royal Statistical Society. Series B, Statistical methodology **79**, 125–148](https://doi.org/10.1111/rssb.12162) (2017).
+  
