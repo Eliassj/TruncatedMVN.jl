@@ -15,7 +15,6 @@ makedocs(;
     authors="Elias Sjölin <elias.sjolin@gmail.com> and contributors",
     sitename="TruncatedMVN.jl",
     format=MarkdownVitepress(
-        deploy_url="eliassj.github.io/TruncatedMVN.jl",
         repo="github.com/Eliassj/TruncatedMVN.jl",
         devbranch="master",
         devurl="dev"
