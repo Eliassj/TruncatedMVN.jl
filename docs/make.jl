@@ -15,16 +15,15 @@ makedocs(;
     authors="Eliassj <elias.sjolin@gmail.com> and contributors",
     sitename="TruncatedMVN.jl",
     format=MarkdownVitepress(
-        repo="https://Eliassj.github.io/TruncatedMVN.jl",
+        repo="https://eliassj.github.io/TruncatedMVN.jl",
     ),
     pages=[
         "Home" => "index.md",
     ],)
 
 deploydocs(;
-    repo="github.com/Eliassj/TruncatedMVN.jl",
+    repo="github.com/eliassj/TruncatedMVN.jl",
     devbranch="master",
-    target="build", # this is where Vitepress stores its output
     branch="gh-pages",
-    push_preview=true
+    push_preview=false
 )
