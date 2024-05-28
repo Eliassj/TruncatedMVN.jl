@@ -24,4 +24,7 @@ makedocs(;
 deploydocs(;
     repo="github.com/Eliassj/TruncatedMVN.jl",
     devbranch="master",
+    target="build", # this is where Vitepress stores its output
+    branch="gh-pages",
+    push_preview=true
 )
