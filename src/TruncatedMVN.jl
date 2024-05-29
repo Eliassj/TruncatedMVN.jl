@@ -9,7 +9,6 @@ Truncated multivariate normal distribution per reference below. Based on MATLAB 
 
 module TruncatedMVN
 
-using Base: iterate_continued
 import LinearAlgebra: diag, I, diagm
 import SpecialFunctions: erfcx, erfc, erfcinv
 using NonlinearSolve
