@@ -21,6 +21,8 @@ makedocs(;
     ),
     pages=[
         "Home" => "index.md",
+        "Public API" => "public.md",
+        "Internals" => "private.md"
     ],)
 
 deploydocs(;

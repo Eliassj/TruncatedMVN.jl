@@ -29,9 +29,7 @@ Exports 1 struct + its constructor and 1 function:
 - [`TruncatedMVN.TruncatedMVNormal`](@ref): Struct and constructor for initializing the distribution.
 - [`TruncatedMVN.sample`](@ref): Exact sampling from the distribution.
 
-```@autodocs
-Modules = [TruncatedMVN]
-```
+Documentation for these can be found in the [Public API](@ref) section.
 
 # References
 

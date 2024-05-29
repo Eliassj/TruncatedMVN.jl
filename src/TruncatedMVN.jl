@@ -9,9 +9,11 @@ Truncated multivariate normal distribution per reference below. Based on MATLAB 
 
 module TruncatedMVN
 
+using Base: iterate_continued
 import LinearAlgebra: diag, I, diagm
 import SpecialFunctions: erfcx, erfc, erfcinv
 using NonlinearSolve
+using StaticArrays
 
 export TruncatedMVNormal
 export sample
@@ -85,16 +87,37 @@ function sample(d::TruncatedMVNormal, n::Integer, max_iter::Integer=10000)
         compute_factors!(d)
     end
 
-    rv = Matrix{Float64}(undef, d.dim, 0)
+    # rv = Matrix{Float64}(undef, d.dim, n)
 
     accept, iteration = 0, 0
 
+    # Preallocate constant StaticArrays for mvnrnd
+    Smu = SVector{length(d.mu) + 1}(vcat(d.mu, [0.0]))
+    SL = SMatrix{size(d.L)...}(d.L)
+    Slb = SVector{length(d.lb)}(d.lb)
+    Sub = SVector{length(d.ub)}(d.ub)
+
+
+    # Preallocate normal arrays
+    Z = zeros(Float64, d.dim, n)
+    logpr = zeros(Float64, n)
+
+    # Preallocate output
+    rv = Matrix{Float64}(undef, d.dim, n)
+    rvindx = 1
+
     while accept < n
-        logpr, Z = mvnrnd(d, n, d.mu)
+        mvnrnd!(Z, logpr, d, Smu, SL, Slb, Sub)
 
         idx = @. -log($(rand(n))) > (d.psistar - logpr)
 
-        rv = hcat(rv, Z[:, idx])
+        naccepted = count(idx)
+
+        rv[:, rvindx:naccepted] = Z[:, idx]
+
+        rvindx = naccepted + 1
+
+        # rv = hcat(rv, Z[:, idx])
 
         accept += size(rv, 2)
 
@@ -107,6 +130,9 @@ function sample(d::TruncatedMVNormal, n::Integer, max_iter::Integer=10000)
             accept = n
             rv = hcat(rv, Z)
         end
+        # reset result arrays
+        fill!(Z, 0.0)
+        fill!(logpr, 0.0)
     end
     # Finish and postprocess
     order = sortperm(d.perm)
@@ -119,25 +145,46 @@ function sample(d::TruncatedMVNormal, n::Integer, max_iter::Integer=10000)
     return rv
 end
 
+"""
+    mvnrnd!(z::AbstractArray, logpr::AbstractArray, d::TruncatedMVNormal, mu::AbstractArray, L::AbstractArray, lb::AbstractArray, ub::AbstractArray)
 
-function mvnrnd(d::TruncatedMVNormal, n::Integer, mud)
-    mu = deepcopy(mud)
-    push!(mu, 0.0)
-    z = zeros(Float64, d.dim, n)
-    logpr = fill(0.0, n)
+Generates samples from a normal distribution. Mutates `z` and `logpr` which both an array and a vector with type filled with `0.0` of dimensions D x n and n respectively.
+"""
+function mvnrnd!(z::AbstractArray, logpr::AbstractArray, d::TruncatedMVNormal, mu::AbstractArray, L::AbstractArray, lb::AbstractArray, ub::AbstractArray)
     for k in 1:d.dim
         # Multiply L * Z
-        col = d.L[[2], begin:k] * z[begin:k, :]
+        col = L[[k], begin:k] * z[begin:k, :]
         # Limits of truncation
-        tl = @. d.lb[k] - mu[k] - col
-        tu = @. d.ub[k] - mu[k] - col
+        tl = @. lb[k] - mu[k] - col
+        tu = @. ub[k] - mu[k] - col
 
         z[k, :] = mu[k] .+ trandn(tl, tu)
-
-        logpr .+= (@.($(lnNormalProb(tl, tu)) + 0.5 * mu[k]^2 - mu[k] * z[k, :]))[1]
+        a = (@.($(lnNormalProb(tl, tu)) + 0.5 * mu[k]^2 - mu[k] * z[[k], :]))
+        for i in eachindex(logpr)
+            logpr[i] += a[i]
+        end
     end
     return logpr, z
 end
+
+# function mvnrnd(d::TruncatedMVNormal, n::Integer, mud::AbstractArray)
+#     mu = deepcopy(mud)
+#     push!(mu, 0.0)
+#     z = zeros(Float64, d.dim, n)
+#     logpr = fill(0.0, n)
+#     for k in 1:d.dim
+#         # Multiply L * Z
+#         col = d.L[[2], begin:k] * z[begin:k, :]
+#         # Limits of truncation
+#         tl = @. d.lb[k] - mu[k] - col
+#         tu = @. d.ub[k] - mu[k] - col
+#
+#         z[k, :] = mu[k] .+ trandn(tl, tu)
+#
+#         logpr .+= (@.($(lnNormalProb(tl, tu)) + 0.5 * mu[k]^2 - mu[k] * z[k, :]))[1]
+#     end
+#     return logpr, z
+# end
 
 function trandn(lb::T, ub::T) where {T}
     length(lb) != length(ub) && throw(DimensionMismatch("Lengths of lb and ub must be equal"))
@@ -291,7 +338,6 @@ function gradpsi(y, p)
     dfdx = -mu[1:d-1] + transpose((transpose(P) * L[:, 1:d-1]))
     dfdm = @. mu - x + P
     grad = cat(dfdx, dfdm[begin:end-1], dims=1)
-    # NOTE: indexing is wrong here or in compute_factors.
     return grad
 end
 
