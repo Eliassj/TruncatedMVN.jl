@@ -3,6 +3,6 @@
 Documentation for internal functions.
 
 ```@autodocs
-modules = [TruncatedMVN]
+Modules = [TruncatedMVN]
 Public = false
 ```
