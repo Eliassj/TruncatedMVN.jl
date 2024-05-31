@@ -74,6 +74,12 @@ mutable struct TruncatedMVNormal{S<:AbstractArray{<:AbstractFloat},T<:AbstractVe
     end # Inner TruncatedMVNormal constructor
 end # TruncatedMVNormal struct
 
+function Base.show(io::IO, ::MIME"text/plain", d::TruncatedMVNormal)
+    print(io,
+        "Dimensions: $(d.dim)\nμ: $(d.orig_mu)\ncov: $(d.cov)\nlb: $(d.orig_lb)\nub: $(d.orig_ub)"
+    )
+end
+
 """
     sample(d::TruncatedMVNormal, n::Integer, max_iter::Integer=10000)
 
@@ -81,14 +87,14 @@ Sample `n` samples from the distribution `d`.
 
 Returns an D x n `Matrix` of samples where D is the dimension of the distribution `d`.
 """
-function sample(d::TruncatedMVNormal, n::Integer, max_iter::Integer=10000)
+function sample(d::TruncatedMVNormal{<:AbstractArray{<:AbstractFloat},<:AbstractVector{<:AbstractFloat},<:Integer,<:AbstractFloat,<:AbstractVector{<:Integer}}, n::Integer, max_iter::Integer=10000)
     if isempty(d.psistar)
         compute_factors!(d)
     end
 
     # rv = Matrix{Float64}(undef, d.dim, n)
 
-    accept, iteration = 0, 0
+    # accept, iteration = 0, 0
 
     # Preallocate constant StaticArrays for mvnrnd
     Smu = SVector{length(d.mu) + 1}(vcat(d.mu, [0.0]))
@@ -103,8 +109,23 @@ function sample(d::TruncatedMVNormal, n::Integer, max_iter::Integer=10000)
 
     # Preallocate output
     rv = Matrix{Float64}(undef, d.dim, n)
-    rvindx = 1
+    # rvindx = 1
+    sampleloop!(rv, Z, logpr, d, Smu, SL, Slb, Sub, n, max_iter)
+    # Finish and postprocess
+    order = sortperm(d.perm)
+    rv = rv[:, begin:n]
+    rv = d.L_unscaled * rv
+    rv = rv[order, :]
 
+    # retransfer to original mean
+    rv .+= repeat(reshape(d.orig_mu, (d.dim, 1)), 1, size(rv, 2))
+    return rv
+end
+
+function sampleloop!(rv::Matrix{Float64}, Z::Matrix{Float64}, logpr::Vector{Float64}, d::TruncatedMVNormal{<:AbstractArray{<:AbstractFloat},<:AbstractVector{<:AbstractFloat},<:Integer,<:AbstractFloat,<:AbstractVector{<:Integer}}, Smu::SVector, SL::SMatrix, Slb::SVector, Sub::SVector, n::Int64, max_iter::Int64)
+    rvindx = 1
+    accept = 0
+    iteration = 0
     while accept < n
         mvnrnd!(Z, logpr, d, Smu, SL, Slb, Sub)
 
@@ -133,15 +154,6 @@ function sample(d::TruncatedMVNormal, n::Integer, max_iter::Integer=10000)
         fill!(Z, 0.0)
         fill!(logpr, 0.0)
     end
-    # Finish and postprocess
-    order = sortperm(d.perm)
-    rv = rv[:, begin:n]
-    rv = d.L_unscaled * rv
-    rv = rv[order, :]
-
-    # retransfer to original mean
-    rv .+= repeat(reshape(d.orig_mu, (d.dim, 1)), 1, size(rv, 2))
-    return rv
 end
 
 """
