@@ -74,6 +74,17 @@ mutable struct TruncatedMVNormal{S<:AbstractArray{<:AbstractFloat},T<:AbstractVe
     end # Inner TruncatedMVNormal constructor
 end # TruncatedMVNormal struct
 
+# TODO: Make non-mutating versions of these so the whole struct
+# can ve computed from the beginning and be made immutable.
+
+function colperm()
+
+end
+
+function compute_factors()
+
+end
+
 function Base.show(io::IO, ::MIME"text/plain", d::TruncatedMVNormal)
     print(io,
         "Dimensions: $(d.dim)\nμ: $(d.orig_mu)\ncov: $(d.cov)\nlb: $(d.orig_lb)\nub: $(d.orig_ub)"
@@ -133,7 +144,7 @@ function sampleloop!(rv::Matrix{Float64}, Z::Matrix{Float64}, logpr::Vector{Floa
 
         naccepted = count(idx)
 
-        rv[:, rvindx:naccepted] = Z[:, idx]
+        @views rv[:, rvindx:naccepted] = Z[:, idx]
 
         rvindx = naccepted + 1
 
@@ -164,10 +175,11 @@ Generates samples from a normal distribution. Mutates `z` and `logpr` which both
 function mvnrnd!(z::AbstractArray, logpr::AbstractArray, d::TruncatedMVNormal, mu::AbstractArray, L::AbstractArray, lb::AbstractArray, ub::AbstractArray)
     for k in 1:d.dim
         # Multiply L * Z
-        col = L[[k], begin:k] * z[begin:k, :]
+        col = L[[k], begin:k-1] * z[begin:k-1, :]
         # Limits of truncation
         tl = @. lb[k] - mu[k] - col
         tu = @. ub[k] - mu[k] - col
+        println("tl: $tl \ntu: $tu")
 
         z[k, :] = mu[k] .+ trandn(tl, tu)
         a = (@.($(lnNormalProb(tl, tu)) + 0.5 * mu[k]^2 - mu[k] * z[[k], :]))
@@ -175,7 +187,6 @@ function mvnrnd!(z::AbstractArray, logpr::AbstractArray, d::TruncatedMVNormal, m
             logpr[i] += a[i]
         end
     end
-    return logpr, z
 end
 
 # function mvnrnd(d::TruncatedMVNormal, n::Integer, mud::AbstractArray)
