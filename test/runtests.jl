@@ -1,6 +1,4 @@
 using TruncatedMVN
 using Test
 
-@testset "TruncatedMVN.jl" begin
-    # Write your tests here.
-end
+@testset "TruncatedMVN.jl" begin end

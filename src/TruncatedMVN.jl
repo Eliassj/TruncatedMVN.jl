@@ -403,7 +403,6 @@ function colperm!(d::TruncatedMVNormal)
     z = fill(0.0, length(d.orig_mu))
 
     for j in 1:d.dim
-        @show j
         pr = fill(Inf, size(z))
         i = j:d.dim
         D = diag(d.cov)
@@ -414,14 +413,11 @@ function colperm!(d::TruncatedMVNormal)
         tl = (d.lb[i] .- L[i, begin:j-1] * z[begin:j-1]) ./ s
         tu = (d.ub[i] .- L[i, begin:j-1] * z[begin:j-1]) ./ s
         pr[i] = lnNormalProb(tl, tu)
-        @show pr
 
         k = argmin(pr)
 
         jk = [j, k]
         kj = [k, j]
-        @show jk
-        @show kj
 
 
         d.cov[jk, :] = d.cov[kj, :]
@@ -432,7 +428,6 @@ function colperm!(d::TruncatedMVNormal)
         d.lb[jk] = d.lb[kj]
         d.ub[jk] = d.ub[kj]
         perm[jk] = perm[kj]
-        @show perm
 
 
         s = d.cov[j, j] - sum(L[j, begin:j-1] .^ 2)
@@ -444,23 +439,14 @@ function colperm!(d::TruncatedMVNormal)
         L[j, j] = sqrt(s)
         new_L = d.cov[j+1:d.dim, j] - L[j+1:d.dim, begin:j-1] * transpose(L[[j], begin:j-1])
         L[j+1:d.dim, j] = new_L ./ L[j, j]
-        @show z
-        @show L
 
         tl = ((d.lb[j] .- L[[j], begin:j-1] * z[begin:j-1]) ./ L[j, j])
         tu = ((d.ub[j] .- L[[j], begin:j-1] * z[begin:j-1]) ./ L[j, j])
-        println("Z for $j")
-        @show z[begin:j-1]
-        @show tl
-        @show tu
 
         w = (lnNormalProb(tl, tu))[1]
-        @show w
         z[j] = ((@. exp(-0.5 * tl^2 - w) - exp.(-0.5 * tu^2 - w))/sqrt(2π))[1]
 
     end
-    @show L
-    @show perm
     return L, perm
 end
 
