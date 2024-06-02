@@ -179,7 +179,6 @@ function mvnrnd!(z::AbstractArray, logpr::AbstractArray, d::TruncatedMVNormal, m
         # Limits of truncation
         tl = @. lb[k] - mu[k] - col
         tu = @. ub[k] - mu[k] - col
-        println("tl: $tl \ntu: $tu")
 
         z[k, :] = mu[k] .+ trandn(tl, tu)
         a = (@.($(lnNormalProb(tl, tu)) + 0.5 * mu[k]^2 - mu[k] * z[[k], :]))
@@ -403,22 +402,27 @@ function colperm!(d::TruncatedMVNormal)
     L = fill(0.0, size(d.cov))
     z = fill(0.0, length(d.orig_mu))
 
-    for j in deepcopy(perm)
+    for j in 1:d.dim
+        @show j
         pr = fill(Inf, size(z))
         i = j:d.dim
         D = diag(d.cov)
-        s = D[i] .- sum(L[i, 1:j] .^ 2, dims=2)
+        s = D[i] .- sum(L[i, begin:j-1] .^ 2, dims=2)
         s[s.<0.0] .= 1.0e-15
         @. s = sqrt(s)
 
-        tl = (d.lb[i] .- L[i, 1:j] * z[1:j]) ./ s
-        tu = (d.ub[i] .- L[i, 1:j] * z[1:j]) ./ s
+        tl = (d.lb[i] .- L[i, begin:j-1] * z[begin:j-1]) ./ s
+        tu = (d.ub[i] .- L[i, begin:j-1] * z[begin:j-1]) ./ s
         pr[i] = lnNormalProb(tl, tu)
+        @show pr
 
         k = argmin(pr)
 
         jk = [j, k]
         kj = [k, j]
+        @show jk
+        @show kj
+
 
         d.cov[jk, :] = d.cov[kj, :]
         d.cov[:, jk] = d.cov[:, kj]
@@ -428,25 +432,35 @@ function colperm!(d::TruncatedMVNormal)
         d.lb[jk] = d.lb[kj]
         d.ub[jk] = d.ub[kj]
         perm[jk] = perm[kj]
+        @show perm
 
 
-        s = d.cov[j, j] - sum(L[j, 1:j] .^ 2)
+        s = d.cov[j, j] - sum(L[j, begin:j-1] .^ 2)
         if s < -0.01
             throw(DomainError(s, "Sigma is not a positive semi-definite"))
         elseif s < 0.0
             s = 1.0e-15
         end
         L[j, j] = sqrt(s)
-        new_L = d.cov[(j+1):d.dim, j] - L[(j+1):d.dim, 1:j] * L[j, 1:j]
-        L[(j+1):d.dim, j] = new_L ./ L[j, j]
+        new_L = d.cov[j+1:d.dim, j] - L[j+1:d.dim, begin:j-1] * transpose(L[[j], begin:j-1])
+        L[j+1:d.dim, j] = new_L ./ L[j, j]
+        @show z
+        @show L
 
-        tl = ((d.lb[j] .- L[[j], 1:j] * z[1:j]) ./ L[j, j])
-        tu = ((d.ub[j] .- L[[j], 1:j] * z[1:j]) ./ L[j, j])
+        tl = ((d.lb[j] .- L[[j], begin:j-1] * z[begin:j-1]) ./ L[j, j])
+        tu = ((d.ub[j] .- L[[j], begin:j-1] * z[begin:j-1]) ./ L[j, j])
+        println("Z for $j")
+        @show z[begin:j-1]
+        @show tl
+        @show tu
 
-        w = lnNormalProb(tl, tu)
-        z[j] = (@. exp(-0.5 * tl[1]^2 - w[1]) - exp.(-0.5 * tu[1]^2 - w[1])) / sqrt(2π)
+        w = (lnNormalProb(tl, tu))[1]
+        @show w
+        z[j] = ((@. exp(-0.5 * tl^2 - w) - exp.(-0.5 * tu^2 - w))/sqrt(2π))[1]
 
     end
+    @show L
+    @show perm
     return L, perm
 end
 
@@ -457,7 +471,6 @@ Accurately compute `ln(P(a<Z<b))` `where Z~N(0,1)`.
 =#
 function lnNormalProb(a::T, b::T) where {T}
     p = zeros(eltype(a), size(a))
-
     # b>a>0
     idx1 = a .> zero(eltype(a))
     if any(idx1)
@@ -487,7 +500,7 @@ function lnNormalProb(a::T, b::T) where {T}
 end
 
 function lnPhi(x)
-    @. -0.5 * x^2 - log(2) + log(erfcx(x / sqrt(2)) + 1.0e-15)
+    return @. -0.5 * x^2 - log(2) + log(erfcx(x / sqrt(2)) + 1.0e-15)
 end
 
 end
