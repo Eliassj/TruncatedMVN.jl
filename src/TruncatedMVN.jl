@@ -147,7 +147,7 @@ end
 """
     mvnrnd!(z::AbstractArray, logpr::AbstractArray, d::TruncatedMVNormal, mu::AbstractArray, L::AbstractArray, lb::AbstractArray, ub::AbstractArray)
 
-Generates samples from a normal distribution. Mutates `z` and `logpr` which both an array and a vector with type filled with `0.0` of dimensions D x n and n respectively.
+Generates samples from a normal distribution.
 """
 function mvnrnd!(z::AbstractArray, logpr::AbstractArray, d::TruncatedMVNormal, mu::AbstractArray, L::AbstractArray, lb::AbstractArray, ub::AbstractArray)
     for k in 1:d.dim
@@ -166,24 +166,6 @@ function mvnrnd!(z::AbstractArray, logpr::AbstractArray, d::TruncatedMVNormal, m
     return logpr, z
 end
 
-# function mvnrnd(d::TruncatedMVNormal, n::Integer, mud::AbstractArray)
-#     mu = deepcopy(mud)
-#     push!(mu, 0.0)
-#     z = zeros(Float64, d.dim, n)
-#     logpr = fill(0.0, n)
-#     for k in 1:d.dim
-#         # Multiply L * Z
-#         col = d.L[[2], begin:k] * z[begin:k, :]
-#         # Limits of truncation
-#         tl = @. d.lb[k] - mu[k] - col
-#         tu = @. d.ub[k] - mu[k] - col
-#
-#         z[k, :] = mu[k] .+ trandn(tl, tu)
-#
-#         logpr .+= (@.($(lnNormalProb(tl, tu)) + 0.5 * mu[k]^2 - mu[k] * z[k, :]))[1]
-#     end
-#     return logpr, z
-# end
 
 function trandn(lb::T, ub::T) where {T}
     length(lb) != length(ub) && throw(DimensionMismatch("Lengths of lb and ub must be equal"))
