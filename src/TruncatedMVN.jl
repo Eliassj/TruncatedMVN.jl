@@ -23,21 +23,21 @@ export sample
 Truncated multivariate normal distribution with minimax tilting-based sampling.
 
 """
-mutable struct TruncatedMVNormal{S<:AbstractArray{<:AbstractFloat},T<:AbstractVector{<:AbstractFloat},U<:Integer,V<:AbstractFloat,P<:AbstractVector{<:Integer}}
-    dim::U
-    mu::T
-    orig_mu::T
-    cov::S
-    lb::T
-    ub::T
-    orig_lb::T
-    orig_ub::T
-    L::S
-    L_unscaled::S
-    EPS::V
-    perm::P
-    x::T
-    psistar::T
+mutable struct TruncatedMVNormal{T, V<:AbstractVector{<:T}, M<:AbstractMatrix{<:T}}
+    dim::Int
+    mu::V
+    orig_mu::V
+    cov::M
+    lb::V
+    ub::V
+    orig_lb::V
+    orig_ub::V
+    L::M
+    L_unscaled::M
+    EPS::T
+    perm::Vector{Int}
+    x::V
+    psistar::V
 
     @doc """
          TruncatedMVNormal(mu::T, cov::S, lb::T, ub::T) where {T<:AbstractVector{<:AbstractFloat},S<:AbstractArray{<:AbstractFloat}}
@@ -56,7 +56,7 @@ mutable struct TruncatedMVNormal{S<:AbstractArray{<:AbstractFloat},T<:AbstractVe
     Bounds may be `-Inf`/`Inf`.
 
     """
-    function TruncatedMVNormal(mu::T, cov::S, lb::T, ub::T) where {T<:AbstractVector{<:AbstractFloat},S<:AbstractArray{<:AbstractFloat}}
+    function TruncatedMVNormal(mu::V, cov::M, lb::V, ub::V) where {T<:Number,V<:AbstractVector{<:T},M<:AbstractArray{<:T}}
         dim = length(mu)
         if size(cov, 1) != size(cov, 2)
             throw(DimensionMismatch("cov matrix must be square"))
@@ -81,7 +81,7 @@ mutable struct TruncatedMVNormal{S<:AbstractArray{<:AbstractFloat},T<:AbstractVe
         L, x, mu, psistar = compute_factors2!(L_unscaled, lb_s, ub_s, dim)
 
 
-        new{typeof(cov),typeof(mu),typeof(dim),Float64,Vector{Int64}}(
+        new{T, V, M}(
             dim,
             mu,
             orig_mu,
