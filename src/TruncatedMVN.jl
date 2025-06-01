@@ -86,7 +86,6 @@ function sample(d::TruncatedMVNormal, n::Integer, max_iter::Integer=10000)
         compute_factors!(d)
     end
 
-    # rv = Matrix{Float64}(undef, d.dim, n)
 
     accept, iteration = 0, 0
 
@@ -99,26 +98,32 @@ function sample(d::TruncatedMVNormal, n::Integer, max_iter::Integer=10000)
 
     # Preallocate normal arrays
     Z = zeros(Float64, d.dim, n)
+    Zview = @view Z[:, begin:end]
     logpr = zeros(Float64, n)
+    logprview = @view logpr[begin:end]
+
 
     # Preallocate output
     rv = Matrix{Float64}(undef, d.dim, n)
     rvindx = 1
 
-    while accept < n
-        mvnrnd!(Z, logpr, d, Smu, SL, Slb, Sub)
 
-        idx = @. -log($(rand(n))) > (d.psistar - logpr)
+    while accept < n
+        mvnrnd!(Zview, logprview, d, Smu, SL, Slb, Sub)
+
+        idx = @. -log($(rand(length(logprview)))) > (d.psistar - logprview)
 
         naccepted = count(idx)
 
-        rv[:, rvindx:naccepted] = Z[:, idx]
 
-        rvindx = naccepted + 1
+        rv[:, rvindx:(rvindx+naccepted-1)] = Zview[:, idx]
+
 
         # rv = hcat(rv, Z[:, idx])
 
-        accept += size(rv, 2)
+        # accept += size(rv, 2)
+        accept += naccepted
+        rvindx = accept + 1
 
         iteration += 1
 
@@ -127,20 +132,21 @@ function sample(d::TruncatedMVNormal, n::Integer, max_iter::Integer=10000)
         elseif iteration > max_iter
             @warn "Max iterations $(max_iter) reached. Sample is only approximately distributed."
             accept = n
-            rv = hcat(rv, Z)
+            rv[:, accept+1:end] = Zview[:, .!idx]
         end
-        # reset result arrays
-        fill!(Z, 0.0)
-        fill!(logpr, 0.0)
+        # reset and resize result arrays
+        Zview = @view Z[:, begin:(n-accept)]
+        fill!(Zview, 0.0)
+        logprview = @view logpr[begin:(n-accept)]
+        fill!(logprview, 0.0)
     end
     # Finish and postprocess
     order = sortperm(d.perm)
-    rv = rv[:, begin:n]
     rv = d.L_unscaled * rv
     rv = rv[order, :]
 
     # retransfer to original mean
-    rv .+= repeat(reshape(d.orig_mu, (d.dim, 1)), 1, size(rv, 2))
+    rv .+= d.orig_mu
     return rv
 end
 
