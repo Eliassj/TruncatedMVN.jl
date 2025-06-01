@@ -57,12 +57,12 @@ mutable struct TruncatedMVNormal{S<:AbstractArray{<:AbstractFloat},T<:AbstractVe
 
     """
     function TruncatedMVNormal(mu::T, cov::S, lb::T, ub::T) where {T<:AbstractVector{<:AbstractFloat},S<:AbstractArray{<:AbstractFloat}}
-        d = length(mu)
+        dim = length(mu)
         if size(cov, 1) != size(cov, 2)
             throw(DimensionMismatch("cov matrix must be square"))
         end
 
-        if length(lb) != d || size(cov, 1) != d || length(ub) != d
+        if length(lb) != dim || size(cov, 1) != dim || length(ub) != dim
             throw(DimensionMismatch("Dimensions of mu, lb, ub and cov must match each other"))
         end
 
@@ -70,7 +70,33 @@ mutable struct TruncatedMVNormal{S<:AbstractArray{<:AbstractFloat},T<:AbstractVe
             throw(ArgumentError("All upper bounds (ub) must be greater than all lower bounds (lb)"))
         end
 
-        new{typeof(cov),typeof(mu),typeof(d),Float64,Vector{Int64}}(d, Vector{eltype(mu)}(), mu, cov, lb .- mu, ub .- mu, lb, ub, similar(cov), similar(cov), 10.0e-15, [], [], [])
+        orig_mu = copy(mu)
+
+
+        lb_s = lb .- orig_mu
+        ub_s = ub .- orig_mu
+
+        L_unscaled, perm = colperm2!(dim, cov, mu, lb_s, ub_s)
+
+        L, x, mu, psistar = compute_factors2!(L_unscaled, lb_s, ub_s, dim)
+
+
+        new{typeof(cov),typeof(mu),typeof(dim),Float64,Vector{Int64}}(
+            dim,
+            mu,
+            orig_mu,
+            cov,
+            lb_s,
+            ub_s,
+            lb, # Original lb
+            ub, # Origingal ub
+            L,
+            L_unscaled,
+            10.0e-15,
+            perm,
+            x,
+            psistar
+        )
     end # Inner TruncatedMVNormal constructor
 end # TruncatedMVNormal struct
 
@@ -82,10 +108,6 @@ Sample `n` samples from the distribution `d`.
 Returns an D x n `Matrix` of samples where D is the dimension of the distribution `d`.
 """
 function sample(d::TruncatedMVNormal, n::Integer, max_iter::Integer=10000)
-    if isempty(d.psistar)
-        compute_factors!(d)
-    end
-
 
     accept, iteration = 0, 0
 
@@ -263,6 +285,36 @@ function ntail(lb::T, ub::T) where {T}
     return @. sqrt(2 * x)
 end
 
+
+function compute_factors2!(L_unscaled, lb, ub, dim)
+
+    D = diag(L_unscaled)
+    any(D .< 1.0e-15) && @warn "Method might fail as covariance matrix is singular!"
+
+    scaled_L = L_unscaled ./ repeat(reshape(D, dim, 1), 1, dim)
+
+    @show D
+
+    lb .= lb ./ D
+    ub .= ub ./ D
+
+    L = scaled_L - I
+
+    x0 = zeros(2 * (dim - 1))
+    p = [L, lb, ub]
+
+    fun = NonlinearFunction(gradpsi, jac=jacpsi)
+    prob = NonlinearProblem(fun, x0, p)
+    sol = solve(prob)
+
+    x = sol.u[begin:dim-1]
+    mu = sol.u[dim:end]
+
+    psistar = [psy2(L, lb, ub, x, mu)]
+
+    return L, x, mu, psistar
+end
+
 function compute_factors!(d::TruncatedMVNormal)
     d.L_unscaled, d.perm = colperm!(d)
 
@@ -288,6 +340,19 @@ function compute_factors!(d::TruncatedMVNormal)
 
     d.psistar = [psy(d, d.x, d.mu)]
 
+end
+
+
+function psy2(L, lb, ub, xd, mud)
+    x = vcat(xd, [0.0])
+    mu = vcat(mud, [0.0])
+
+    c = L * x
+
+    lt = @. lb - mu - c
+    ut = @. ub - mu - c
+
+    sum(lnNormalProb(lt, ut) .+ 0.5 .* mu .^ 2 .- x .* mu)
 end
 
 function psy(d::TruncatedMVNormal, xd, mud)
@@ -361,6 +426,58 @@ function jacpsi(y, p)
 
     out = hvcat((2, 2), xx, transpose(mx), mx, diagm(1 .+ dP[begin:end-1]))
     return out
+end
+
+function colperm2!(dim, cov, orig_mu, lb, ub)
+    perm = collect(1:dim)
+    L = fill(0.0, size(cov))
+    z = fill(0.0, length(orig_mu))
+
+    for j in deepcopy(perm)
+        pr = fill(Inf, size(z))
+        i = j:dim
+        D = diag(cov)
+        s = D[i] .- sum(L[i, 1:j] .^ 2, dims=2)
+        s[s.<0.0] .= 1.0e-15
+        @. s = sqrt(s)
+
+        tl = (lb[i] .- L[i, 1:j] * z[1:j]) ./ s
+        tu = (ub[i] .- L[i, 1:j] * z[1:j]) ./ s
+        pr[i] = lnNormalProb(tl, tu)
+
+        k = argmin(pr)
+
+        jk = [j, k]
+        kj = [k, j]
+
+        cov[jk, :] = cov[kj, :]
+        cov[:, jk] = cov[:, kj]
+
+        L[jk, :] = L[kj, :]
+
+        lb[jk] = lb[kj]
+        ub[jk] = ub[kj]
+        perm[jk] = perm[kj]
+
+
+        s = cov[j, j] - sum(L[j, 1:j] .^ 2)
+        if s < -0.01
+            throw(DomainError(s, "Sigma is not a positive semi-definite"))
+        elseif s < 0.0
+            s = 1.0e-15
+        end
+        L[j, j] = sqrt(s)
+        new_L = cov[(j+1):dim, j] - L[(j+1):dim, 1:j] * L[j, 1:j]
+        L[(j+1):dim, j] = new_L ./ L[j, j]
+
+        tl = ((lb[j] .- L[[j], 1:j] * z[1:j]) ./ L[j, j])
+        tu = ((ub[j] .- L[[j], 1:j] * z[1:j]) ./ L[j, j])
+
+        w = lnNormalProb(tl, tu)
+        z[j] = (@. exp(-0.5 * tl[1]^2 - w[1]) - exp.(-0.5 * tu[1]^2 - w[1])) / sqrt(2π)
+
+    end
+    return L, perm
 end
 
 function colperm!(d::TruncatedMVNormal)
