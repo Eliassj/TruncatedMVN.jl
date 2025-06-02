@@ -74,6 +74,16 @@ mutable struct TruncatedMVNormal{S<:AbstractArray{<:AbstractFloat},T<:AbstractVe
     end # Inner TruncatedMVNormal constructor
 end # TruncatedMVNormal struct
 
+function Base.show(io::IO, d::TruncatedMVNormal)
+    print(io,
+        typeof(d), "\n",
+        "mean: ", d.orig_mu, "\n",
+        "ub: ", d.orig_ub, "\n",
+        "lb: ", d.orig_lb, "\n",
+        "cov: ", d.cov
+    )
+end
+
 """
     sample(d::TruncatedMVNormal, n::Integer, max_iter::Integer=10000)
 
@@ -160,8 +170,8 @@ function mvnrnd!(z::AbstractArray, logpr::AbstractArray, d::TruncatedMVNormal, m
         # Multiply L * Z
         col = L[[k], begin:k] * z[begin:k, :]
         # Limits of truncation
-        tl = @. lb[k] - mu[k] - col
-        tu = @. ub[k] - mu[k] - col
+        tl = vec(@. lb[k] - mu[k] - col)
+        tu = vec(@. ub[k] - mu[k] - col)
 
         z[k, :] = mu[k] .+ trandn(tl, tu)
         a = (@.($(lnNormalProb(tl, tu)) + 0.5 * mu[k]^2 - mu[k] * z[[k], :]))
@@ -175,17 +185,14 @@ end
 
 function trandn(lb::T, ub::T) where {T}
     length(lb) != length(ub) && throw(DimensionMismatch("Lengths of lb and ub must be equal"))
-
     x = similar(ub)
 
     a = 0.66 # Treshold from MATLAB implementation
-    l = reshape(lb, (1, length(lb)))
-    u = reshape(ub, (1, length(ub)))
     # Consider 3 cases
-    idx1 = vec(l .> a)
+    idx1 = vec(lb .> a)
     if any(idx1)
-        tl = l[:, idx1]
-        tu = u[:, idx1]
+        tl = lb[idx1]
+        tu = ub[idx1]
         x[idx1] = ntail(tl, tu)
     end
     idx2 = vec(ub .< -a)
