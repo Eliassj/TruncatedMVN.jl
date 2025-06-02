@@ -13,17 +13,25 @@ import LinearAlgebra: diag, I, diagm
 import SpecialFunctions: erfcx, erfc, erfcinv
 using NonlinearSolve
 using StaticArrays
+using DocStringExtensions
 
 export TruncatedMVNormal
 export sample
 
-"""
-    TruncatedMVNormal{S<:AbstractArray{<:AbstractFloat},T<:AbstractVector{<:AbstractFloat},U<:Integer,V<:AbstractFloat,P<:AbstractVector{<:Integer}}
+@template (FUNCTIONS, METHODS, MACROS) = """
+                                         $(SIGNATURES)
+                                         $(DOCSTRING)
+                                         """
+@template (TYPES,) = """
+    $(TYPEDEF)
+    $(DOCSTRING)
+    """
 
-Truncated multivariate normal distribution with minimax tilting-based sampling.
 
 """
-mutable struct TruncatedMVNormal{T, V<:AbstractVector{<:T}, M<:AbstractMatrix{<:T}}
+Truncated multivariate normal distribution with minimax tilting-based sampling. 
+"""
+struct TruncatedMVNormal{T,V<:AbstractVector{<:T},M<:AbstractMatrix{<:T}}
     dim::Int
     mu::V
     orig_mu::V
@@ -40,18 +48,16 @@ mutable struct TruncatedMVNormal{T, V<:AbstractVector{<:T}, M<:AbstractMatrix{<:
     psistar::V
 
     @doc """
-         TruncatedMVNormal(mu::T, cov::S, lb::T, ub::T) where {T<:AbstractVector{<:AbstractFloat},S<:AbstractArray{<:AbstractFloat}}
-
     Inner constructor of the [`TruncatedMVN.TruncatedMVNormal`](@ref) distribution.
 
     Generates a truncated multivariate normal distribution which may be accurately sampled from using [`TruncatedMVN.sample`](@ref).
 
     # Arguments
 
-    - `mu::T`: D-dimensional vector of means.
-    - `cov::S`: DxD-dimensional covariance matrix.
-    - `lb::T`: D-dimensional vector of lower bounds.
-    - `ub::T`: D-dimensional vector of upper bounds.
+    - `mu`: D-dimensional vector of means.
+    - `cov`: DxD-dimensional covariance matrix.
+    - `lb`: D-dimensional vector of lower bounds.
+    - `ub`: D-dimensional vector of upper bounds.
 
     Bounds may be `-Inf`/`Inf`.
 
@@ -81,7 +87,7 @@ mutable struct TruncatedMVNormal{T, V<:AbstractVector{<:T}, M<:AbstractMatrix{<:
         L, x, mu, psistar = compute_factors2!(L_unscaled, lb_s, ub_s, dim)
 
 
-        new{T, V, M}(
+        new{T,V,M}(
             dim,
             mu,
             orig_mu,
@@ -111,11 +117,9 @@ function Base.show(io::IO, d::TruncatedMVNormal)
 end
 
 """
-    sample(d::TruncatedMVNormal, n::Integer, max_iter::Integer=10000)
+Sample `n` samples from the [`TruncatedMVNormal`](@ref) distribution `d`.
 
-Sample `n` samples from the distribution `d`.
-
-Returns an D x n `Matrix` of samples where D is the dimension of the distribution `d`.
+Returns a D x n `Matrix` of samples where D is the dimension of the distribution `d`.
 """
 function sample(d::TruncatedMVNormal, n::Integer, max_iter::Integer=10000)
 
@@ -182,11 +186,7 @@ function sample(d::TruncatedMVNormal, n::Integer, max_iter::Integer=10000)
     return rv
 end
 
-"""
-    mvnrnd!(z::AbstractArray, logpr::AbstractArray, d::TruncatedMVNormal, mu::AbstractArray, L::AbstractArray, lb::AbstractArray, ub::AbstractArray)
-
-Generates samples from a normal distribution.
-"""
+#Generates samples from a normal distribution.
 function mvnrnd!(z::AbstractArray, logpr::AbstractArray, d::TruncatedMVNormal, mu::AbstractArray, L::AbstractArray, lb::AbstractArray, ub::AbstractArray)
     for k in 1:d.dim
         # Multiply L * Z
@@ -299,8 +299,6 @@ function compute_factors2!(L_unscaled, lb, ub, dim)
     any(D .< 1.0e-15) && @warn "Method might fail as covariance matrix is singular!"
 
     scaled_L = L_unscaled ./ repeat(reshape(D, dim, 1), 1, dim)
-
-    @show D
 
     lb .= lb ./ D
     ub .= ub ./ D
