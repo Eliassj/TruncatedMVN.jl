@@ -1,3 +1,4 @@
+
 #=
 Truncated multivariate normal distribution per reference below. Based on MATLAB implementation by Zdravko Botev and python implementation by Paul Brunzema (both linked below).
 
@@ -31,8 +32,7 @@ export sample
 """
 Truncated multivariate normal distribution with minimax tilting-based sampling. 
 """
-struct TruncatedMVNormal{T,V<:AbstractVector{<:T},M<:AbstractMatrix{<:T}}
-    dim::Int
+struct TruncatedMVNormal{T,D,V<:AbstractVector{<:T},M<:AbstractMatrix{<:T}}
     mu::V
     orig_mu::V
     cov::M
@@ -62,13 +62,12 @@ struct TruncatedMVNormal{T,V<:AbstractVector{<:T},M<:AbstractMatrix{<:T}}
     Bounds may be `-Inf`/`Inf`.
 
     """
-    function TruncatedMVNormal(mu::V, cov::M, lb::V, ub::V) where {T<:Number,V<:AbstractVector{<:T},M<:AbstractArray{<:T}}
-        dim = length(mu)
+    function TruncatedMVNormal(mu::V, cov::M, lb::V, ub::V, ::Val{D}=Val(length(mu))) where {T<:Number,D,V<:AbstractVector{<:T},M<:AbstractArray{<:T}}
         if size(cov, 1) != size(cov, 2)
             throw(DimensionMismatch("cov matrix must be square"))
         end
 
-        if length(lb) != dim || size(cov, 1) != dim || length(ub) != dim
+        if length(lb) != D || size(cov, 1) != D || length(ub) != D
             throw(DimensionMismatch("Dimensions of mu, lb, ub and cov must match each other"))
         end
 
@@ -82,13 +81,12 @@ struct TruncatedMVNormal{T,V<:AbstractVector{<:T},M<:AbstractMatrix{<:T}}
         lb_s = lb .- orig_mu
         ub_s = ub .- orig_mu
 
-        L_unscaled, perm = colperm2!(dim, cov, mu, lb_s, ub_s)
+        L_unscaled, perm = colperm2!(D, cov, mu, lb_s, ub_s)
 
-        L, x, mu, psistar = compute_factors2!(L_unscaled, lb_s, ub_s, dim)
+        L, x, mu, psistar = compute_factors2!(L_unscaled, lb_s, ub_s, D)
 
 
-        new{T,V,M}(
-            dim,
+        new{T,D,V,M}(
             mu,
             orig_mu,
             cov,
@@ -121,36 +119,39 @@ Sample `n` samples from the [`TruncatedMVNormal`](@ref) distribution `d`.
 
 Returns a D x n `Matrix` of samples where D is the dimension of the distribution `d`.
 """
-function sample(d::TruncatedMVNormal, n::Integer, max_iter::Integer=10000)
+function sample(d::TruncatedMVNormal{T,D}, n::Integer, max_iter::Integer=10000) where {T,D}
 
     accept, iteration = 0, 0
 
     # Preallocate constant StaticArrays for mvnrnd
-    Smu = SVector{length(d.mu) + 1}(vcat(d.mu, [0.0]))
-    SL = SMatrix{size(d.L)...}(d.L)
-    Slb = SVector{length(d.lb)}(d.lb)
-    Sub = SVector{length(d.ub)}(d.ub)
+    Smu = SVector{D,T}(vcat(d.mu, [0.0]))
+    SL = SMatrix{D,D,T}(d.L)
+    Slb = SVector{D,T}(d.lb)
+    Sub = SVector{D,T}(d.ub)
+    # Smu = vcat(d.mu, [0.0])
+    # SL = d.L
+    # Slb = d.lb
+    # Sub = d.ub
 
-
-    # Preallocate normal arrays
-    Z = zeros(Float64, d.dim, n)
+    # Preallocate arrays
+    Z = zeros(T, D, n)
     Zview = @view Z[:, begin:end]
-    logpr = zeros(Float64, n)
+    logpr = zeros(T, n)
     logprview = @view logpr[begin:end]
 
-
     # Preallocate output
-    rv = Matrix{Float64}(undef, d.dim, n)
+    rv = Matrix{T}(undef, D, n)
     rvindx = 1
 
 
     while accept < n
-        mvnrnd!(Zview, logprview, d, Smu, SL, Slb, Sub)
+        mvnrnd!(Zview, logprview, Smu, SL, Slb, Sub, Val(D))
 
         idx = @. -log($(rand(length(logprview)))) > (d.psistar - logprview)
+        # @. idxview = -log($(rand(length(logprview)))) > (d.psistar - logprview)
 
+        # naccepted = count(idxview)
         naccepted = count(idx)
-
 
         rv[:, rvindx:(rvindx+naccepted-1)] = Zview[:, idx]
 
@@ -168,13 +169,14 @@ function sample(d::TruncatedMVNormal, n::Integer, max_iter::Integer=10000)
         elseif iteration > max_iter
             @warn "Max iterations $(max_iter) reached. Sample is only approximately distributed."
             accept = n
-            rv[:, accept+1:end] = Zview[:, .!idx]
+            rv[:, accept+1:end] = @view Zview[:, .!idx]
         end
         # reset and resize result arrays
         Zview = @view Z[:, begin:(n-accept)]
         fill!(Zview, 0.0)
         logprview = @view logpr[begin:(n-accept)]
         fill!(logprview, 0.0)
+        # idxview = @view idx[begin:(n-accept)]
     end
     # Finish and postprocess
     order = sortperm(d.perm)
@@ -187,8 +189,9 @@ function sample(d::TruncatedMVNormal, n::Integer, max_iter::Integer=10000)
 end
 
 #Generates samples from a normal distribution.
-function mvnrnd!(z::AbstractArray, logpr::AbstractArray, d::TruncatedMVNormal, mu::AbstractArray, L::AbstractArray, lb::AbstractArray, ub::AbstractArray)
-    for k in 1:d.dim
+function mvnrnd!(z::AbstractArray, logpr::AbstractArray,
+    mu::AbstractArray, L::AbstractArray, lb::AbstractArray, ub::AbstractArray, ::Val{D}) where {D}
+    for k in 1:D
         # Multiply L * Z
         col = L[[k], begin:k] * z[begin:k, :]
         # Limits of truncation
@@ -196,10 +199,11 @@ function mvnrnd!(z::AbstractArray, logpr::AbstractArray, d::TruncatedMVNormal, m
         tu = vec(@. ub[k] - mu[k] - col)
 
         z[k, :] = mu[k] .+ trandn(tl, tu)
-        a = (@.($(lnNormalProb(tl, tu)) + 0.5 * mu[k]^2 - mu[k] * z[[k], :]))
+        a = (@.($(lnNormalProb(tl, tu)) + 0.5 * mu[k]^2 - mu[k] * z[k, :]))
         for i in eachindex(logpr)
             logpr[i] += a[i]
         end
+        # logpr .+= a
     end
     return logpr, z
 end
@@ -320,28 +324,28 @@ function compute_factors2!(L_unscaled, lb, ub, dim)
     return L, x, mu, psistar
 end
 
-function compute_factors!(d::TruncatedMVNormal)
+function compute_factors!(d::TruncatedMVNormal{T,D}) where {T,D}
     d.L_unscaled, d.perm = colperm!(d)
 
-    D = diag(d.L_unscaled)
-    any(D .< 1.0e-15) && @warn "Method might fail as covariance matrix is singular!"
+    Ds = diag(d.L_unscaled)
+    any(Ds .< 1.0e-15) && @warn "Method might fail as covariance matrix is singular!"
 
-    scaled_L = d.L_unscaled ./ repeat(reshape(D, d.dim, 1), 1, d.dim)
+    scaled_L = d.L_unscaled ./ repeat(reshape(D, D, 1), 1, D)
 
     d.lb = d.lb ./ D
     d.ub = d.ub ./ D
 
     d.L = scaled_L - I
 
-    x0 = zeros(2 * (d.dim - 1))
+    x0 = zeros(2 * (D - 1))
     p = [d.L, d.lb, d.ub]
 
     fun = NonlinearFunction(gradpsi, jac=jacpsi)
     prob = NonlinearProblem(fun, x0, p)
     sol = solve(prob)
 
-    d.x = sol.u[begin:d.dim-1]
-    d.mu = sol.u[d.dim:end]
+    d.x = sol.u[begin:D-1]
+    d.mu = sol.u[D:end]
 
     d.psistar = [psy(d, d.x, d.mu)]
 
@@ -485,16 +489,16 @@ function colperm2!(dim, cov, orig_mu, lb, ub)
     return L, perm
 end
 
-function colperm!(d::TruncatedMVNormal)
-    perm = collect(1:d.dim)
+function colperm!(d::TruncatedMVNormal{T,D}) where {T,D}
+    perm = collect(1:D)
     L = fill(0.0, size(d.cov))
     z = fill(0.0, length(d.orig_mu))
 
     for j in deepcopy(perm)
         pr = fill(Inf, size(z))
-        i = j:d.dim
-        D = diag(d.cov)
-        s = D[i] .- sum(L[i, 1:j] .^ 2, dims=2)
+        i = j:D
+        Di = diag(d.cov)
+        s = Di[i] .- sum(L[i, 1:j] .^ 2, dims=2)
         s[s.<0.0] .= 1.0e-15
         @. s = sqrt(s)
 
@@ -524,8 +528,8 @@ function colperm!(d::TruncatedMVNormal)
             s = 1.0e-15
         end
         L[j, j] = sqrt(s)
-        new_L = d.cov[(j+1):d.dim, j] - L[(j+1):d.dim, 1:j] * L[j, 1:j]
-        L[(j+1):d.dim, j] = new_L ./ L[j, j]
+        new_L = d.cov[(j+1):D, j] - L[(j+1):D, 1:j] * L[j, 1:j]
+        L[(j+1):D, j] = new_L ./ L[j, j]
 
         tl = ((d.lb[j] .- L[[j], 1:j] * z[1:j]) ./ L[j, j])
         tu = ((d.ub[j] .- L[[j], 1:j] * z[1:j]) ./ L[j, j])
