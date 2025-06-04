@@ -297,7 +297,8 @@ function ntail(lb::T, ub::T) where {T}
 end
 
 
-function compute_factors2!(L_unscaled, lb, ub, dim)
+function compute_factors2!(L_unscaled::AbstractMatrix{T}, lb::AbstractVector{T},
+    ub::AbstractVector{T}, dim) where {T}
 
     D = diag(L_unscaled)
     any(D .< 1.0e-15) && @warn "Method might fail as covariance matrix is singular!"
@@ -312,7 +313,7 @@ function compute_factors2!(L_unscaled, lb, ub, dim)
     x0 = zeros(2 * (dim - 1))
     p = [L, lb, ub]
 
-    fun = NonlinearFunction(gradpsi, jac=jacpsi)
+    fun = NonlinearFunction{false}(gradpsi, jac=jacpsi)
     prob = NonlinearProblem(fun, x0, p)
     sol = solve(prob)
 
