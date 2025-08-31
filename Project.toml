@@ -4,6 +4,7 @@ authors = ["Eliassj <elias.sjolin@gmail.com> and contributors"]
 version = "1.0.3"
 
 [deps]
+Accessors = "7d9f7c33-5ae7-4f3b-8dc6-eff91059b697"
 DocStringExtensions = "ffbed154-4ef7-542d-bbb7-c09d3a79fcae"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 NonlinearSolve = "8913a72c-1f9b-4ce2-8d82-65094dcecaec"
@@ -11,6 +12,7 @@ SpecialFunctions = "276daf66-3868-5448-9aa4-cd146d93841b"
 StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 
 [compat]
+Accessors = "0.1.42"
 DocStringExtensions = "0.9.4"
 NonlinearSolve = "3,4"
 SpecialFunctions = "2"

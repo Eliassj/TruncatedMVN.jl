@@ -1,4 +1,3 @@
-
 #=
 Truncated multivariate normal distribution per reference below. Based on MATLAB implementation by Zdravko Botev and python implementation by Paul Brunzema (both linked below).
 
@@ -12,6 +11,7 @@ module TruncatedMVN
 
 import LinearAlgebra: diag, I, diagm
 import SpecialFunctions: erfcx, erfc, erfcinv
+import Base: @propagate_inbounds, @_propagate_inbounds_meta
 using NonlinearSolve
 using StaticArrays
 using DocStringExtensions
@@ -28,12 +28,15 @@ export sample
     $(DOCSTRING)
     """
 
+include("setinds.jl")
 
 """
 Truncated multivariate normal distribution with minimax tilting-based sampling. 
 """
-struct TruncatedMVNormal{T,D,V<:AbstractVector{<:T},M<:AbstractMatrix{<:T}}
-    mu::V
+struct TruncatedMVNormal{T,D,Vm<:AbstractVector{<:T},V<:AbstractVector{<:T},M<:AbstractMatrix{<:T}}
+    # Needs to be a different type if static arrays are to work as the length of
+    # `mu` is dim - 1
+    mu::Vm
     orig_mu::V
     cov::M
     lb::V
@@ -47,46 +50,94 @@ struct TruncatedMVNormal{T,D,V<:AbstractVector{<:T},M<:AbstractMatrix{<:T}}
     x::V
     psistar::V
 
-    @doc """
-    Inner constructor of the [`TruncatedMVN.TruncatedMVNormal`](@ref) distribution.
-
-    Generates a truncated multivariate normal distribution which may be accurately sampled from using [`TruncatedMVN.sample`](@ref).
-
-    # Arguments
-
-    - `mu`: D-dimensional vector of means.
-    - `cov`: DxD-dimensional covariance matrix.
-    - `lb`: D-dimensional vector of lower bounds.
-    - `ub`: D-dimensional vector of upper bounds.
-
-    Bounds may be `-Inf`/`Inf`.
-
-    """
-    function TruncatedMVNormal(mu::V, cov::M, lb::V, ub::V, ::Val{D}=Val(length(mu))) where {T<:Number,D,V<:AbstractVector{<:T},M<:AbstractArray{<:T}}
-        if size(cov, 1) != size(cov, 2)
-            throw(DimensionMismatch("cov matrix must be square"))
-        end
-
-        if length(lb) != D || size(cov, 1) != D || length(ub) != D
-            throw(DimensionMismatch("Dimensions of mu, lb, ub and cov must match each other"))
-        end
-
-        if any(ub .<= lb)
-            throw(ArgumentError("All upper bounds (ub) must be greater than all lower bounds (lb)"))
-        end
-
-        orig_mu = copy(mu)
+end # TruncatedMVNormal struct
 
 
-        lb_s = lb .- orig_mu
-        ub_s = ub .- orig_mu
+@doc """
+Inner constructor of the [`TruncatedMVN.TruncatedMVNormal`](@ref) distribution.
 
-        L_unscaled, perm = colperm2!(D, cov, mu, lb_s, ub_s)
+Generates a truncated multivariate normal distribution which may be accurately sampled from using [`TruncatedMVN.sample`](@ref).
 
-        L, x, mu, psistar = compute_factors2!(L_unscaled, lb_s, ub_s, D)
+# Arguments
+
+- `mu`: D-dimensional vector of means.
+- `cov`: DxD-dimensional covariance matrix.
+- `lb`: D-dimensional vector of lower bounds.
+- `ub`: D-dimensional vector of upper bounds.
+
+Bounds may be `-Inf`/`Inf`.
+
+"""
+function TruncatedMVNormal(mu::V, cov::M, lb::V, ub::V, ::Val{D}=Val(length(mu))) where {T<:Number,D,V<:AbstractVector{<:T},M<:AbstractArray{<:T}}
+    if size(cov, 1) != size(cov, 2)
+        throw(DimensionMismatch("cov matrix must be square"))
+    end
+
+    if length(lb) != D || size(cov, 1) != D || length(ub) != D
+        throw(DimensionMismatch("Dimensions of mu, lb, ub and cov must match each other"))
+    end
+
+    if any(ub .<= lb)
+        throw(ArgumentError("All upper bounds (ub) must be greater than all lower bounds (lb)"))
+    end
+
+    orig_mu = copy(mu)
 
 
-        new{T,D,V,M}(
+    lb_s = lb .- orig_mu
+    ub_s = ub .- orig_mu
+
+    L_unscaled, perm = colperm2!(D, cov, mu, lb_s, ub_s)
+
+    L, x, mu, psistar = compute_factors2!(L_unscaled, lb_s, ub_s, D)
+
+    TruncatedMVNormal(
+        mu,
+        orig_mu,
+        cov,
+        lb_s,
+        ub_s,
+        lb, # Original lb
+        ub, # Origingal ub
+        L,
+        L_unscaled,
+        10.0e-15,
+        perm,
+        x,
+        psistar
+    )
+end # Inner TruncatedMVNormal constructor
+
+
+function TruncatedMVNormal(mu::StaticVector{D,T}, cov::StaticMatrix{D,D,T}, lb::StaticVector{D,T}, ub::StaticVector{D,T}, ::Val{D}=Val(length(mu))
+) where {T<:Number,D}
+    if size(cov, 1) != size(cov, 2)
+        throw(DimensionMismatch("cov matrix must be square"))
+    end
+
+    if length(lb) != D || size(cov, 1) != D || length(ub) != D
+        throw(DimensionMismatch("Dimensions of mu, lb, ub and cov must match each other"))
+    end
+
+    if any(ub .<= lb)
+        throw(ArgumentError("All upper bounds (ub) must be greater than all lower bounds (lb)"))
+    end
+
+    orig_mu = copy(mu)
+    @show orig_mu |> typeof
+    @show mu |> typeof
+
+    @show cov
+
+    lb_s = lb .- orig_mu
+    ub_s = ub .- orig_mu
+
+    L_unscaled, perm = colperm2!(D, cov, mu, lb_s, ub_s)
+
+    L, x, mu, psistar = compute_factors2!(L_unscaled, lb_s, ub_s, D)
+
+    for (v, l) in Iterators.zip(
+        (
             mu,
             orig_mu,
             cov,
@@ -100,9 +151,43 @@ struct TruncatedMVNormal{T,D,V<:AbstractVector{<:T},M<:AbstractMatrix{<:T}}
             perm,
             x,
             psistar
+        ),
+        (
+            :mu,
+            :orig_mu,
+            :cov,
+            :lb_s,
+            :ub_s,
+            :lb, # Original lb
+            :ub, # Origingal ub
+            :L,
+            :L_unscaled,
+            :eps,
+            :perm,
+            :x,
+            :psistar
         )
-    end # Inner TruncatedMVNormal constructor
-end # TruncatedMVNormal struct
+    )
+
+        println(l, ": ", v, " of ", typeof(v))
+    end
+
+    TruncatedMVNormal(
+        MVector{D - 1}(mu),
+        orig_mu,
+        cov,
+        lb_s,
+        ub_s,
+        lb, # Original lb
+        ub, # Origingal ub
+        L,
+        L_unscaled,
+        10.0e-15,
+        perm,
+        x,
+        psistar
+    )
+end # Inner TruncatedMVNormal constructor
 
 function Base.show(io::IO, d::TruncatedMVNormal)
     print(io,
@@ -200,17 +285,13 @@ function mvnrnd!(z::AbstractArray, logpr::AbstractArray,
 
         z[k, :] = mu[k] .+ trandn(tl, tu)
         a = (@.($(lnNormalProb(tl, tu)) + 0.5 * mu[k]^2 - mu[k] * z[k, :]))
-        for i in eachindex(logpr)
-            logpr[i] += a[i]
-        end
-        # logpr .+= a
+        logpr .+= a
     end
-    return logpr, z
+    return nothing
 end
 
 
 function trandn(lb::T, ub::T) where {T}
-    length(lb) != length(ub) && throw(DimensionMismatch("Lengths of lb and ub must be equal"))
     x = similar(ub)
 
     a = 0.66 # Treshold from MATLAB implementation
@@ -307,6 +388,35 @@ function compute_factors2!(L_unscaled::AbstractMatrix{T}, lb::AbstractVector{T},
 
     lb .= lb ./ D
     ub .= ub ./ D
+
+    L = scaled_L - I
+
+    x0 = zeros(2 * (dim - 1))
+    p = [L, lb, ub]
+
+    fun = NonlinearFunction{false}(gradpsi, jac=jacpsi)
+    prob = NonlinearProblem(fun, x0, p)
+    sol = solve(prob)
+
+    x = sol.u[begin:dim-1]
+    mu = sol.u[dim:end]
+
+    psistar = [psy2(L, lb, ub, x, mu)]
+
+    return L, x, mu, psistar
+end
+
+
+function compute_factors2!(L_unscaled::StaticMatrix{T}, lb::StaticVector{T},
+    ub::StaticVector{T}, dim) where {T}
+
+    D = diag(L_unscaled)
+    any(D .< 1.0e-15) && @warn "Method might fail as covariance matrix is singular!"
+
+    scaled_L = L_unscaled ./ repeat(reshape(D, dim, 1), 1, dim)
+
+    lb = lb ./ D
+    ub = ub ./ D
 
     L = scaled_L - I
 
@@ -442,6 +552,7 @@ function colperm2!(dim, cov, orig_mu, lb, ub)
     perm = collect(1:dim)
     L = fill(0.0, size(cov))
     z = fill(0.0, length(orig_mu))
+    println(cov)
 
     for j in deepcopy(perm)
         pr = fill(Inf, size(z))
@@ -486,9 +597,12 @@ function colperm2!(dim, cov, orig_mu, lb, ub)
         w = lnNormalProb(tl, tu)
         z[j] = (@. exp(-0.5 * tl[1]^2 - w[1]) - exp.(-0.5 * tu[1]^2 - w[1])) / sqrt(2π)
 
+
     end
+    println(cov)
     return L, perm
 end
+
 
 function colperm!(d::TruncatedMVNormal{T,D}) where {T,D}
     perm = collect(1:D)
