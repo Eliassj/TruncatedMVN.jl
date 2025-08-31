@@ -206,7 +206,6 @@ end
 
 
 function trandn(lb::T, ub::T) where {T}
-    length(lb) != length(ub) && throw(DimensionMismatch("Lengths of lb and ub must be equal"))
     x = similar(ub)
 
     a = 0.66 # Treshold from MATLAB implementation
@@ -225,8 +224,8 @@ function trandn(lb::T, ub::T) where {T}
     end
     idx3 = .!(idx1 .| idx2)
     if any(idx3)
-        tl = lb[idx3]
-        tu = ub[idx3]
+        tl = @view lb[idx3]
+        tu = @view ub[idx3]
         x[idx3] = tn(tl, tu)
     end
     return x
@@ -256,14 +255,15 @@ end
 function trnd(lb::T, ub::T) where {T}
     x = randn(length(lb))
 
-    test = @. (x < lb) | (x > ub)
-    idx = findall(test)
+    # test = @. (x < lb) || (x > ub)
+    # idx = findall(test)
+    idx = findall((x[i] < lb[i]) || (x[i] > ub[i]) for i in eachindex(lb, ub, x))
     d = length(idx)
     while d > 0
-        ly = lb[idx]
-        uy = ub[idx]
+        ly = @view lb[idx]
+        uy = @view ub[idx]
         y = randn(length(uy))
-        idx2 = @. (y > ly) & (y < uy)
+        idx2 = @. (y > ly) && (y < uy)
         x[idx[idx2]] = y[idx2]
         idx = idx[.!idx2]
         d = length(idx)
