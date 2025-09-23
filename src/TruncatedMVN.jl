@@ -10,7 +10,7 @@ Truncated multivariate normal distribution per reference below. Based on MATLAB 
 module TruncatedMVN
 
 import LinearAlgebra: diag, I, diagm
-import SpecialFunctions: erfcx, erfc, erfcinv
+import SpecialFunctions: erfcx, erfc, erfcinv, expm1
 using NonlinearSolve
 using StaticArrays
 
@@ -187,7 +187,7 @@ function trandn(lb::T, ub::T) where {T}
     length(lb) != length(ub) && throw(DimensionMismatch("Lengths of lb and ub must be equal"))
     x = similar(ub)
 
-    a = 0.66 # Treshold from MATLAB implementation
+    a = 0.66 # Threshold from MATLAB implementation
     # Consider 3 cases
     idx1 = vec(lb .> a)
     if any(idx1)
@@ -199,7 +199,7 @@ function trandn(lb::T, ub::T) where {T}
     if any(idx2)
         tl = -ub[idx2]
         tu = -lb[idx2]
-        x[idx2] = ntail(tl, tu)
+        x[idx2] = -ntail(tl, tu)
     end
     idx3 = .!(idx1 .| idx2)
     if any(idx3)
@@ -253,7 +253,7 @@ end
 function ntail(lb::T, ub::T) where {T}
     c = @. lb^2 / 2
     n = length(lb)
-    f = @. exp(c - ub^2 / 2) - 1
+    f = @. expm1(c - ub^2 / 2)
     x = @. c - log(1 + $(rand(n)) * f)
     props = @. ($(rand(n))^2 * x)
     rejected = findall(props .> c) # Find rejected
@@ -422,11 +422,11 @@ function colperm!(d::TruncatedMVNormal)
     return L, perm
 end
 
-#=
+"""
     lnNormalProb(a, b)
 
 Accurately compute `ln(P(a<Z<b))` `where Z~N(0,1)`.
-=#
+"""
 function lnNormalProb(a::T, b::T) where {T}
     p = zeros(eltype(a), size(a))
 
