@@ -11,7 +11,7 @@ These may be found here: [MATLAB by Botev](https://mathworks.com/matlabcentral/f
 
 This example is adapted from the [MATLAB](https://mathworks.com/matlabcentral/fileexchange/53792-truncated-multivariate-normal-generator) package image and the R package `TruncatedNormal` [vignette](https://cloud.r-project.org/web/packages/TruncatedNormal/vignettes/TruncatedNormal_vignette.html).
 
-Suppose we wish to simulate a bivariate vector $\boldsymbol{X} \sim \mathcal{N}(\boldsymbol{\mu}, \boldsymbol{\Sigma})$ conditional on $X_1-X_2 < -6$. Setting $\mathbf{A} = \left( \begin{matrix} 1 & -1 \\ 0 & 1\end{matrix}\right)$. We can simulate $\boldsymbol{Y} \sim \mathcal{N}(\mathbf{A}\boldsymbol{\mu},\mathbf{A}\boldsymbol{\Sigma}\mathbf{A}^\top)$ conditional on $\boldsymbol{l} \leq \boldsymbol{Y} \leq \boldsymbol{u}$ and then set $\boldsymbol{X} = \mathbf{A}^{-1}\boldsymbol{Y}$.
+Suppose we wish to simulate a bivariate vector $\boldsymbol{X} \sim \mathcal{N}(\boldsymbol{\mu}, \boldsymbol{\Sigma})$ conditional on $X_1-X_2 < -6$. Setting $\mathbf{A} = \begin{pmatrix} 1 & -1 \\ 0 & 1 \end{pmatrix}$, we can simulate $\boldsymbol{Y} \sim \mathcal{N}(\mathbf{A}\boldsymbol{\mu},\mathbf{A}\boldsymbol{\Sigma}\mathbf{A}^\top)$ conditional on $\boldsymbol{l} \leq \boldsymbol{Y} \leq \boldsymbol{u}$ and then get $\boldsymbol{X} = \mathbf{A}^{-1}\boldsymbol{Y}$.
 
 
 ```julia
