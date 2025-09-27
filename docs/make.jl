@@ -18,6 +18,7 @@ makedocs(;
         repo="github.com/Eliassj/TruncatedMVN.jl",
         devbranch="master",
         devurl="dev",
+        deploy_url="https://eliassj.github.io/TruncatedMVN.jl/",
         #md_output_path=".", # For live preview
         #build_vitepress=false, # For live preview
     ),
@@ -29,7 +30,7 @@ makedocs(;
     #clean=false,# For live preview
 )
 
-deploydocs(;
+DocumenterVitepress.deploydocs(;
     repo="github.com/Eliassj/TruncatedMVN.jl",
     target="build",
     devbranch="master",
