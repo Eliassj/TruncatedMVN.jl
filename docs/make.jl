@@ -17,13 +17,17 @@ makedocs(;
     format=MarkdownVitepress(
         repo="github.com/Eliassj/TruncatedMVN.jl",
         devbranch="master",
-        devurl="dev"
+        devurl="dev",
+        #md_output_path=".", # For live preview
+        #build_vitepress=false, # For live preview
     ),
     pages=[
         "Home" => "index.md",
         "Public API" => "public.md",
         "Internals" => "private.md"
-    ],)
+    ],
+    #clean=false,# For live preview
+)
 
 deploydocs(;
     repo="github.com/Eliassj/TruncatedMVN.jl",
