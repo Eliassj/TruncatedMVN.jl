@@ -15,7 +15,7 @@ TruncatedMVNormal{S<:AbstractArray{<:AbstractFloat},T<:AbstractVector{<:Abstract
 Truncated multivariate normal distribution with minimax tilting-based sampling.
 
 
-<Badge type="info" class="source-link" text="source"><a href="https://github.com/Eliassj/TruncatedMVN.jl/blob/ca3c4921d015a31e9797b49333a761f594889450/src/TruncatedMVN.jl#L20-L25" target="_blank" rel="noreferrer">source</a></Badge>
+<Badge type="info" class="source-link" text="source"><a href="https://github.com/Eliassj/TruncatedMVN.jl/blob/6529738ccbf48893874d6f02c72d4d301e7bb0aa/src/TruncatedMVN.jl#L20-L25" target="_blank" rel="noreferrer">source</a></Badge>
 
 </details>
 
@@ -46,7 +46,7 @@ Generates a truncated multivariate normal distribution which may be accurately s
 Bounds may be `-Inf`/`Inf`.
 
 
-<Badge type="info" class="source-link" text="source"><a href="https://github.com/Eliassj/TruncatedMVN.jl/blob/ca3c4921d015a31e9797b49333a761f594889450/src/TruncatedMVN.jl#L42-L58" target="_blank" rel="noreferrer">source</a></Badge>
+<Badge type="info" class="source-link" text="source"><a href="https://github.com/Eliassj/TruncatedMVN.jl/blob/6529738ccbf48893874d6f02c72d4d301e7bb0aa/src/TruncatedMVN.jl#L42-L58" target="_blank" rel="noreferrer">source</a></Badge>
 
 </details>
 
@@ -65,7 +65,7 @@ Sample `n` samples from the distribution `d`.
 Returns an D x n `Matrix` of samples where D is the dimension of the distribution `d`.
 
 
-<Badge type="info" class="source-link" text="source"><a href="https://github.com/Eliassj/TruncatedMVN.jl/blob/ca3c4921d015a31e9797b49333a761f594889450/src/TruncatedMVN.jl#L87-L93" target="_blank" rel="noreferrer">source</a></Badge>
+<Badge type="info" class="source-link" text="source"><a href="https://github.com/Eliassj/TruncatedMVN.jl/blob/6529738ccbf48893874d6f02c72d4d301e7bb0aa/src/TruncatedMVN.jl#L87-L93" target="_blank" rel="noreferrer">source</a></Badge>
 
 </details>
 

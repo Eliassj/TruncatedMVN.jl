@@ -15,7 +15,7 @@ lnNormalProb(a, b)
 Accurately compute `ln(P(a<Z<b))` `where Z~N(0,1)`.
 
 
-<Badge type="info" class="source-link" text="source"><a href="https://github.com/Eliassj/TruncatedMVN.jl/blob/ca3c4921d015a31e9797b49333a761f594889450/src/TruncatedMVN.jl#L425-L429" target="_blank" rel="noreferrer">source</a></Badge>
+<Badge type="info" class="source-link" text="source"><a href="https://github.com/Eliassj/TruncatedMVN.jl/blob/6529738ccbf48893874d6f02c72d4d301e7bb0aa/src/TruncatedMVN.jl#L425-L429" target="_blank" rel="noreferrer">source</a></Badge>
 
 </details>
 
@@ -32,7 +32,7 @@ mvnrnd!(z::AbstractArray, logpr::AbstractArray, d::TruncatedMVNormal, mu::Abstra
 Generates samples from a normal distribution.
 
 
-<Badge type="info" class="source-link" text="source"><a href="https://github.com/Eliassj/TruncatedMVN.jl/blob/ca3c4921d015a31e9797b49333a761f594889450/src/TruncatedMVN.jl#L163-L167" target="_blank" rel="noreferrer">source</a></Badge>
+<Badge type="info" class="source-link" text="source"><a href="https://github.com/Eliassj/TruncatedMVN.jl/blob/6529738ccbf48893874d6f02c72d4d301e7bb0aa/src/TruncatedMVN.jl#L163-L167" target="_blank" rel="noreferrer">source</a></Badge>
 
 </details>
 
