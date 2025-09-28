@@ -34,6 +34,5 @@ DocumenterVitepress.deploydocs(;
     repo="github.com/Eliassj/TruncatedMVN.jl",
     target="build",
     devbranch="master",
-    branch="gh-pages",
-    push_preview=true
+    push_preview=false
 )
