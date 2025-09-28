@@ -1,20 +1,3 @@
-```@raw html
----
-layout: home
-
-hero:
-  name: "TruncatedMVN.jl"
-  tagline: Truncated multivariate normal distribution with exact sampling
-
-
----
-
-```
-
-```@meta
-CurrentModule = TruncatedMVN
-```
-
 # TruncatedMVN
 
 Julia reimplementation of a truncated multivariate normal distribution with perfect sampling.
