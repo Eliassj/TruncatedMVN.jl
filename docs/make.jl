@@ -15,10 +15,7 @@ makedocs(;
     authors="Elias Sjölin <elias.sjolin@gmail.com> and contributors",
     sitename="TruncatedMVN.jl",
     format=MarkdownVitepress(
-        repo="github.com/Eliassj/TruncatedMVN.jl",
-        devbranch="master",
-        devurl="dev",
-        deploy_url="https://eliassj.github.io/TruncatedMVN.jl/",
+        repo="https://github.com/Eliassj/TruncatedMVN.jl",
         #md_output_path=".", # For live preview
         #build_vitepress=false, # For live preview
     ),
@@ -31,7 +28,7 @@ makedocs(;
 )
 
 DocumenterVitepress.deploydocs(;
-    repo="github.com/Eliassj/TruncatedMVN.jl",
+    repo="https://eliassj.github.io/TruncatedMVN.jl/",
     target="build",
     devbranch="master",
     push_preview=false
