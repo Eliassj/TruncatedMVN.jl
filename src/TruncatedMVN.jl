@@ -9,11 +9,13 @@ Truncated multivariate normal distribution per reference below. Based on MATLAB 
 
 module TruncatedMVN
 
-import LinearAlgebra: diag, I, diagm
+import LinearAlgebra: diag, I, diagm, logdet
 import SpecialFunctions: erfcx, erfc, erfcinv, expm1
 using NonlinearSolve
 using StaticArrays
 using Distributions
+using Random
+using Statistics
 
 export TruncatedMVNormal
 export sample
@@ -84,6 +86,24 @@ function Base.show(io::IO, d::TruncatedMVNormal)
         "cov: ", d.cov
     )
 end
+
+Base.length(d::TruncatedMVNormal) = d.dim
+
+function Distributions._rand!(::AbstractRNG, d::TruncatedMVNormal, x::AbstractVector{T}) where {T <: Real} 
+    return sample(d, 1)[:,1]
+end
+
+function Distributions._logpdf(d::TruncatedMVNormal, x::AbstractVector{T}) where {T <: Real} 
+    if any(x .< d.orig_lb) || any(x .> d.orig_ub)
+        return -Inf
+    end
+    x_minus_mu = x .- d.orig_mu
+    return (d.dim/2) * log(2π) - (1/2) * logdet(d.cov) - (1/2) * (x_minus_mu' * inv(d.cov) * x_minus_mu)
+end
+
+Statistics.mean(d::TruncatedMVNormal) = d.orig_mu
+Statistics.var(d::TruncatedMVNormal) = diag(d.cov)
+Statistics.cov(d::TruncatedMVNormal) = d.cov
 
 """
     sample(d::TruncatedMVNormal, n::Integer, max_iter::Integer=10000)
