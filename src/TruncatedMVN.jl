@@ -13,6 +13,7 @@ import LinearAlgebra: diag, I, diagm
 import SpecialFunctions: erfcx, erfc, erfcinv, expm1
 using NonlinearSolve
 using StaticArrays
+using Distributions
 
 export TruncatedMVNormal
 export sample
@@ -23,7 +24,7 @@ export sample
 Truncated multivariate normal distribution with minimax tilting-based sampling.
 
 """
-mutable struct TruncatedMVNormal{S<:AbstractArray{<:AbstractFloat},T<:AbstractVector{<:AbstractFloat},U<:Integer,V<:AbstractFloat,P<:AbstractVector{<:Integer}}
+mutable struct TruncatedMVNormal{S<:AbstractArray{<:AbstractFloat},T<:AbstractVector{<:AbstractFloat},U<:Integer,V<:AbstractFloat,P<:AbstractVector{<:Integer}} <: AbstractMvNormal
     dim::U
     mu::T
     orig_mu::T
