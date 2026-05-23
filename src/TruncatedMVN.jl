@@ -11,6 +11,8 @@ module TruncatedMVN
 
 import LinearAlgebra: diag, I, diagm, logdet
 import SpecialFunctions: erfcx, erfc, erfcinv, expm1
+import Distributions: logdetcov, mvnormal_c0, sqmahal, _rand!
+using PDMats
 using NonlinearSolve
 using StaticArrays
 using Distributions
@@ -30,11 +32,14 @@ mutable struct TruncatedMVNormal{S<:AbstractArray{<:AbstractFloat},T<:AbstractVe
     dim::U
     mu::T
     orig_mu::T
-    cov::S
+    mu_stat::T
+    covm::S
+    covm_stat::S
     lb::T
     ub::T
     orig_lb::T
     orig_ub::T
+    logp_inbounds::V
     L::S
     L_unscaled::S
     EPS::V
@@ -43,7 +48,7 @@ mutable struct TruncatedMVNormal{S<:AbstractArray{<:AbstractFloat},T<:AbstractVe
     psistar::T
 
     @doc """
-         TruncatedMVNormal(mu::T, cov::S, lb::T, ub::T) where {T<:AbstractVector{<:AbstractFloat},S<:AbstractArray{<:AbstractFloat}}
+         TruncatedMVNormal(mu::T, covm::S, lb::T, ub::T) where {T<:AbstractVector{<:AbstractFloat},S<:AbstractArray{<:AbstractFloat}}
 
     Inner constructor of the [`TruncatedMVN.TruncatedMVNormal`](@ref) distribution.
 
@@ -52,28 +57,37 @@ mutable struct TruncatedMVNormal{S<:AbstractArray{<:AbstractFloat},T<:AbstractVe
     # Arguments
 
     - `mu::T`: D-dimensional vector of means.
-    - `cov::S`: DxD-dimensional covariance matrix.
+    - `covm::S`: DxD-dimensional covariance matrix.
     - `lb::T`: D-dimensional vector of lower bounds.
     - `ub::T`: D-dimensional vector of upper bounds.
 
     Bounds may be `-Inf`/`Inf`.
 
     """
-    function TruncatedMVNormal(mu::T, cov::S, lb::T, ub::T) where {T<:AbstractVector{<:AbstractFloat},S<:AbstractArray{<:AbstractFloat}}
+    function TruncatedMVNormal(mu::T, covm::S, lb::T, ub::T) where {T<:AbstractVector{<:AbstractFloat},S<:AbstractArray{<:AbstractFloat}}
         d = length(mu)
-        if size(cov, 1) != size(cov, 2)
+        if size(covm, 1) != size(covm, 2)
             throw(DimensionMismatch("cov matrix must be square"))
         end
 
-        if length(lb) != d || size(cov, 1) != d || length(ub) != d
-            throw(DimensionMismatch("Dimensions of mu, lb, ub and cov must match each other"))
+        if length(lb) != d || size(covm, 1) != d || length(ub) != d
+            throw(DimensionMismatch("Dimensions of mu, lb, ub and covm must match each other"))
         end
 
         if any(ub .<= lb)
             throw(ArgumentError("All upper bounds (ub) must be greater than all lower bounds (lb)"))
         end
 
-        new{typeof(cov),typeof(mu),typeof(d),Float64,Vector{Int64}}(d, Vector{eltype(mu)}(), mu, cov, lb .- mu, ub .- mu, lb, ub, similar(cov), similar(cov), 10.0e-15, [], [], [])
+        # Samples from a non-truncated version of the distribution to get accurate statistics
+        untruncated_dist = MvNormal(mu, covm)
+        N_samples = 10_000
+        samples = rand(untruncated_dist, N_samples) # CLT says error goes as 0.5/sqrt(n) or better, semi arbitrary choice of n
+        valid_samples = samples[:,reduce((x, y) -> (x .&& y), eachrow(lb .< samples .< ub))]
+        mu_stat = mean(valid_samples, dims=2)[:,1]
+        covm_stat = cov(valid_samples')
+        logp_inbounds = log(size(valid_samples, 2) / N_samples)
+        
+        new{typeof(covm),typeof(mu),typeof(d),Float64,Vector{Int64}}(d, Vector{eltype(mu)}(), mu, mu_stat, covm, covm_stat, lb .- mu, ub .- mu, lb, ub, logp_inbounds, similar(covm), similar(covm), 10.0e-15, [], [], [])
     end # Inner TruncatedMVNormal constructor
 end # TruncatedMVNormal struct
 
@@ -83,27 +97,29 @@ function Base.show(io::IO, d::TruncatedMVNormal)
         "mean: ", d.orig_mu, "\n",
         "ub: ", d.orig_ub, "\n",
         "lb: ", d.orig_lb, "\n",
-        "cov: ", d.cov
+        "cov: ", d.covm
     )
 end
 
 Base.length(d::TruncatedMVNormal) = d.dim
 
 function Distributions._rand!(::AbstractRNG, d::TruncatedMVNormal, x::AbstractVector{T}) where {T <: Real} 
-    return sample(d, 1)[:,1]
+    x .= sample(d, length(x))[:,1]
 end
+
+logdetcov(d::TruncatedMVNormal) = logdet(d.covm)
+sqmahal(d::TruncatedMVNormal, x::AbstractVector) = invquad(d.covm, x .- d.orig_mu)
 
 function Distributions._logpdf(d::TruncatedMVNormal, x::AbstractVector{T}) where {T <: Real} 
     if any(x .< d.orig_lb) || any(x .> d.orig_ub)
         return -Inf
     end
-    x_minus_mu = x .- d.orig_mu
-    return (d.dim/2) * log(2π) - (1/2) * logdet(d.cov) - (1/2) * (x_minus_mu' * inv(d.cov) * x_minus_mu)
+    return mvnormal_c0(d) - sqmahal(d, x)/2 - d.logp_inbounds
 end
 
-Statistics.mean(d::TruncatedMVNormal) = d.orig_mu
-Statistics.var(d::TruncatedMVNormal) = diag(d.cov)
-Statistics.cov(d::TruncatedMVNormal) = d.cov
+Statistics.mean(d::TruncatedMVNormal) = d.mu_stat
+Statistics.var(d::TruncatedMVNormal) = diag(d.covm_stat)
+Statistics.cov(d::TruncatedMVNormal) = d.covm_stat
 
 """
     sample(d::TruncatedMVNormal, n::Integer, max_iter::Integer=10000)
@@ -116,7 +132,6 @@ function sample(d::TruncatedMVNormal, n::Integer, max_iter::Integer=10000)
     if isempty(d.psistar)
         compute_factors!(d)
     end
-
 
     accept, iteration = 0, 0
 
@@ -393,13 +408,13 @@ end
 
 function colperm!(d::TruncatedMVNormal)
     perm = collect(1:d.dim)
-    L = fill(0.0, size(d.cov))
+    L = fill(0.0, size(d.covm))
     z = fill(0.0, length(d.orig_mu))
 
     for j in deepcopy(perm)
         pr = fill(Inf, size(z))
         i = j:d.dim
-        D = diag(d.cov)
+        D = diag(d.covm)
         s = D[i] .- sum(L[i, 1:j] .^ 2, dims=2)
         s[s.<0.0] .= 1.0e-15
         @. s = sqrt(s)
@@ -413,8 +428,8 @@ function colperm!(d::TruncatedMVNormal)
         jk = [j, k]
         kj = [k, j]
 
-        d.cov[jk, :] = d.cov[kj, :]
-        d.cov[:, jk] = d.cov[:, kj]
+        d.covm[jk, :] = d.covm[kj, :]
+        d.covm[:, jk] = d.covm[:, kj]
 
         L[jk, :] = L[kj, :]
 
@@ -423,14 +438,14 @@ function colperm!(d::TruncatedMVNormal)
         perm[jk] = perm[kj]
 
 
-        s = d.cov[j, j] - sum(L[j, 1:j] .^ 2)
+        s = d.covm[j, j] - sum(L[j, 1:j] .^ 2)
         if s < -0.01
             throw(DomainError(s, "Sigma is not a positive semi-definite"))
         elseif s < 0.0
             s = 1.0e-15
         end
         L[j, j] = sqrt(s)
-        new_L = d.cov[(j+1):d.dim, j] - L[(j+1):d.dim, 1:j] * L[j, 1:j]
+        new_L = d.covm[(j+1):d.dim, j] - L[(j+1):d.dim, 1:j] * L[j, 1:j]
         L[(j+1):d.dim, j] = new_L ./ L[j, j]
 
         tl = ((d.lb[j] .- L[[j], 1:j] * z[1:j]) ./ L[j, j])
