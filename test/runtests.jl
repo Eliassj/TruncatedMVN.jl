@@ -1,6 +1,7 @@
 using TruncatedMVN
 using Test
 using Random
+using StableRNGs
 
 @testset "TruncatedMVN.jl" begin
 
@@ -32,4 +33,7 @@ using Random
     dist_d = TruncatedMVNormal(μ, Σ, lb, ub)
     Xd = TruncatedMVN.sample(dist_d, n)
     @test all([all(lb .≤ row .≤ ub) for row in eachcol(Xd)])
+
+
+    
 end
