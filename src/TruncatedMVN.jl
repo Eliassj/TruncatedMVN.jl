@@ -18,37 +18,7 @@ export TruncatedMVNormal
 export sample
 
 const INV_SQRT2 = 0.7071067811865476   # 1/sqrt(2)
-#=
-mutable struct RNDPool{T, R <: AbstractRNG}
-    rng::R
-    ubuf::Vector{T}
-    nbuf::Vector{T}
-    ui::Int
-    ni::Int
-end
-function RNDPool(rng::R, ::Type{T}, sz::Int = 1024) where {T, R <: AbstractRNG}
-    p = RNDPool{T,R}(rng, Vector{T}(undef, sz), Vector{T}(undef, sz), sz, sz)
-    return p
-end
-@inline function urand(p::RNDPool{T}) where {T}
-    i = p.ui + 1
-    if i > length(p.ubuf)
-        rand!(p.rng, p.ubuf)
-        i = 1
-    end
-    p.ui = i
-    @inbounds return p.ubuf[i]
-end
-@inline function nrand(p::RNDPool{T}) where {T}
-    i = p.ni + 1
-    if i > length(p.nbuf)
-        randn!(p.rng, p.nbuf)
-        i = 1
-    end
-    p.ni = i
-    @inbounds return p.nbuf[i]
-end
-=#
+
 
 """
 
@@ -154,7 +124,7 @@ function sample(rng::AbstractRNG, d::TruncatedMVNormal{T}, n::Integer, max_iter:
     while accept < n
         mvnrnd!(rng, Zview, logprview, d)
 
-        idx = @. -log($(rand(length(logprview)))) > (d.psistar - logprview)
+        idx = @. -log($(rand(rng, length(logprview)))) > (d.psistar - logprview)
 
         naccepted = count(idx)
 
