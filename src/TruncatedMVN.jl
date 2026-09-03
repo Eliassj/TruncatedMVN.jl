@@ -9,38 +9,41 @@ Truncated multivariate normal distribution per reference below. Based on MATLAB 
 
 module TruncatedMVN
 
-import LinearAlgebra: diag, I, diagm
+import LinearAlgebra: diag, I, diagm, mul!
 import SpecialFunctions: erfcx, erfc, erfcinv, expm1
 using NonlinearSolve
-using StaticArrays
+using Random
 
 export TruncatedMVNormal
 export sample
 
+const INV_SQRT2 = 0.7071067811865476   # 1/sqrt(2)
+
+
 """
-    TruncatedMVNormal{S<:AbstractArray{<:AbstractFloat},T<:AbstractVector{<:AbstractFloat},U<:Integer,V<:AbstractFloat,P<:AbstractVector{<:Integer}}
+
 
 Truncated multivariate normal distribution with minimax tilting-based sampling.
 
 """
-mutable struct TruncatedMVNormal{S<:AbstractArray{<:AbstractFloat},T<:AbstractVector{<:AbstractFloat},U<:Integer,V<:AbstractFloat,P<:AbstractVector{<:Integer}}
-    dim::U
-    mu::T
-    orig_mu::T
-    cov::S
-    lb::T
-    ub::T
-    orig_lb::T
-    orig_ub::T
-    L::S
-    L_unscaled::S
-    EPS::V
-    perm::P
-    x::T
-    psistar::T
+mutable struct TruncatedMVNormal{T <: AbstractFloat}
+    dim::Int
+    mu::Vector{T}
+    orig_mu::Vector{T}
+    cov::Matrix{T}
+    lb::Vector{T}
+    ub::Vector{T}
+    orig_lb::Vector{T}
+    orig_ub::Vector{T}
+    L::Matrix{T} 
+    L_unscaled::Matrix{T}
+    EPS::T
+    perm::Vector{Int}
+    x::Vector{T} 
+    psistar::Vector{T} 
 
     @doc """
-         TruncatedMVNormal(mu::T, cov::S, lb::T, ub::T) where {T<:AbstractVector{<:AbstractFloat},S<:AbstractArray{<:AbstractFloat}}
+         TruncatedMVNormal(mu::AbstractVector{T}, cov::AbstractMatrix{T}, lb::AbstractVector{T}, ub::AbstractVector{T}) where {T <:AbstractFloat}
 
     Inner constructor of the [`TruncatedMVN.TruncatedMVNormal`](@ref) distribution.
 
@@ -56,7 +59,7 @@ mutable struct TruncatedMVNormal{S<:AbstractArray{<:AbstractFloat},T<:AbstractVe
     Bounds may be `-Inf`/`Inf`.
 
     """
-    function TruncatedMVNormal(mu::T, cov::S, lb::T, ub::T) where {T<:AbstractVector{<:AbstractFloat},S<:AbstractArray{<:AbstractFloat}}
+    function TruncatedMVNormal(mu::AbstractVector{T}, cov::AbstractMatrix{T}, lb::AbstractVector{T}, ub::AbstractVector{T}) where {T <:AbstractFloat}
         d = length(mu)
         if size(cov, 1) != size(cov, 2)
             throw(DimensionMismatch("cov matrix must be square"))
@@ -70,7 +73,7 @@ mutable struct TruncatedMVNormal{S<:AbstractArray{<:AbstractFloat},T<:AbstractVe
             throw(ArgumentError("All upper bounds (ub) must be greater than all lower bounds (lb)"))
         end
 
-        new{typeof(cov),typeof(mu),typeof(d),Float64,Vector{Int64}}(d, Vector{eltype(mu)}(), mu, cov, lb .- mu, ub .- mu, lb, ub, similar(cov), similar(cov), 10.0e-15, [], [], [])
+        new{T}(d, Vector{T}(), copy(mu), copy(cov), lb .- mu, ub .- mu, lb, ub, similar(cov), similar(cov), 10.0e-15, Int[], T[], T[])
     end # Inner TruncatedMVNormal constructor
 end # TruncatedMVNormal struct
 
@@ -91,20 +94,21 @@ Sample `n` samples from the distribution `d`.
 
 Returns an D x n `Matrix` of samples where D is the dimension of the distribution `d`.
 """
-function sample(d::TruncatedMVNormal, n::Integer, max_iter::Integer=10000)
+function sample(d::TruncatedMVNormal{T}, n::Integer, max_iter::Integer=10000) where T
+    return sample(Random.default_rng(), d, n, max_iter) 
+end
+function sample(rng::AbstractRNG, d::TruncatedMVNormal{T}, n::Integer, max_iter::Integer=10000) where T
     if isempty(d.psistar)
         compute_factors!(d)
     end
 
-
     accept, iteration = 0, 0
 
     # Preallocate constant StaticArrays for mvnrnd
-    Smu = SVector{length(d.mu) + 1}(vcat(d.mu, [0.0]))
-    SL = SMatrix{size(d.L)...}(d.L)
-    Slb = SVector{length(d.lb)}(d.lb)
-    Sub = SVector{length(d.ub)}(d.ub)
-
+    #Smu = SVector{length(d.mu) + 1}(vcat(d.mu, [0.0]))
+    #SL = SMatrix{size(d.L)...}(d.L)
+    #Slb = SVector{length(d.lb)}(d.lb)
+    #Sub = SVector{length(d.ub)}(d.ub)
 
     # Preallocate normal arrays
     Z = zeros(Float64, d.dim, n)
@@ -112,37 +116,36 @@ function sample(d::TruncatedMVNormal, n::Integer, max_iter::Integer=10000)
     logpr = zeros(Float64, n)
     logprview = @view logpr[begin:end]
 
-
     # Preallocate output
     rv = Matrix{Float64}(undef, d.dim, n)
     rvindx = 1
 
 
     while accept < n
-        mvnrnd!(Zview, logprview, d, Smu, SL, Slb, Sub)
+        mvnrnd!(rng, Zview, logprview, d)
 
-        idx = @. -log($(rand(length(logprview)))) > (d.psistar - logprview)
+        idx = @. -log($(rand(rng, length(logprview)))) > (d.psistar - logprview)
 
         naccepted = count(idx)
 
-
         rv[:, rvindx:(rvindx+naccepted-1)] = Zview[:, idx]
 
-
         # rv = hcat(rv, Z[:, idx])
-
         # accept += size(rv, 2)
         accept += naccepted
         rvindx = accept + 1
 
         iteration += 1
 
-        if iteration > 1000
-            @warn "Acceptance prob. less than 0.001"
-        elseif iteration > max_iter
-            @warn "Max iterations $(max_iter) reached. Sample is only approximately distributed."
-            accept = n
-            rv[:, accept+1:end] = Zview[:, .!idx]
+        if accept < n                     
+            if iteration >= max_iter       
+                @warn "Max iterations $(max_iter) reached. Sample is only approximately distributed."
+                rv[:, rvindx:n] = Zview[:, .!idx]  
+                accept = n
+                break         
+            elseif iteration > 1000
+                @warn "Acceptance prob. less than 0.001" maxlog = 1 
+            end
         end
         # reset and resize result arrays
         Zview = @view Z[:, begin:(n-accept)]
@@ -165,7 +168,12 @@ end
 
 Generates samples from a normal distribution.
 """
-function mvnrnd!(z::AbstractArray, logpr::AbstractArray, d::TruncatedMVNormal, mu::AbstractArray, L::AbstractArray, lb::AbstractArray, ub::AbstractArray)
+function mvnrnd!(rng, z::AbstractArray, logpr::AbstractArray, d::TruncatedMVNormal{T}) where T
+    n   = size(z, 2)
+    col = Vector{T}(undef, n)
+    tl  = Vector{T}(undef, n)
+    tu  = Vector{T}(undef, n)
+    #=
     for k in 1:d.dim
         # Multiply L * Z
         col = L[[k], begin:k] * z[begin:k, :]
@@ -180,44 +188,90 @@ function mvnrnd!(z::AbstractArray, logpr::AbstractArray, d::TruncatedMVNormal, m
         end
     end
     return logpr, z
+    =#
+    for k in 1:d.dim 
+        # Multiply L * Z
+        if k == 1
+            fill!(col, zero(T))
+        else
+            mul!(col, transpose(view(z, 1:k-1, :)), view(d.L, k, 1:k-1))
+        end
+        # Limits of truncation
+        mk   = d.mu[k]
+        lk   = d.lb[k]
+        uk   = d.ub[k]
+        hmk2 = T(0.5) * mk * mk
+        @inbounds @simd for j in 1:n
+            tl[j] = lk - mk - col[j]
+            tu[j] = uk - mk - col[j]
+        end
+        zk      = trandn(rng, tl, tu)
+        w       = lnNormalProb(tl, tu)
+        @inbounds @simd for j in 1:n
+            z[k, j]   = mk + zk[j]
+            logpr[j] += w[j] + hmk2 - mk * z[k, j]  
+        end
+    end
+    return logpr, z
 end
 
 
-function trandn(lb::T, ub::T) where {T}
+@inline function trandn(rng, l::T, u::T) where T <: AbstractFloat
+    a = T(0.66)                      # threshold from the MATLAB original
+    if l > a
+        return ntail(rng, l, u)
+    elseif u < -a
+        return -ntail(rng, -u, -l)
+    else
+        return tn(rng, l, u)
+    end
+end
+function trandn(rng, lb::AbstractArray{T}, ub::AbstractArray{T}) where T
     length(lb) != length(ub) && throw(DimensionMismatch("Lengths of lb and ub must be equal"))
     x = similar(ub)
 
-    a = 0.66 # Threshold from MATLAB implementation
+    a = T(0.66) # Threshold from MATLAB implementation
     # Consider 3 cases
-    idx1 = vec(lb .> a)
+    idx1 = lb .> a
     if any(idx1)
         tl = lb[idx1]
         tu = ub[idx1]
-        x[idx1] = ntail(tl, tu)
+        x[idx1] = ntail(rng, tl, tu)
     end
-    idx2 = vec(ub .< -a)
+    idx2 = ub .< -a
     if any(idx2)
         tl = -ub[idx2]
         tu = -lb[idx2]
-        x[idx2] = -ntail(tl, tu)
+        x[idx2] = -ntail(rng, tl, tu)
     end
     idx3 = .!(idx1 .| idx2)
     if any(idx3)
         tl = lb[idx3]
         tu = ub[idx3]
-        x[idx3] = tn(tl, tu)
+        x[idx3] = tn(rng, tl, tu)
     end
     return x
+    
+end
+@inline function tn(rng, l::T, u::T) where T <: AbstractFloat
+    if u - l > T(2)
+        return trnd(rng, l, u)
+    else
+        iv = T(INV_SQRT2)
+        pl = erfc(l * iv) / 2
+        pu = erfc(u * iv) / 2
+        return sqrt(T(2)) * erfcinv(2 * (pl - (pl - pu) * rand(rng)))
+    end
 end
 
-function tn(lb::T, ub::T, sw=2.0) where {T}
+function tn(rng, lb::AbstractArray{T}, ub::AbstractArray{T}, sw::T = T(2)) where T
     x = similar(ub)
     # abs(ub-lb) > sw -> use accept-reject
     idx1 = @. abs(ub - lb) > sw
     if any(idx1)
         tl = lb[idx1]
         tu = ub[idx1]
-        x[idx1] = trnd(tl, tu)
+        x[idx1] = trnd(rng, tl, tu)
     end
     # For other cases use inverse-transform
     idx2 = .!idx1
@@ -226,13 +280,19 @@ function tn(lb::T, ub::T, sw=2.0) where {T}
         tu = ub[idx2]
         pl = @. erfc(tl / sqrt(2)) / 2
         pu = @. erfc(tu / sqrt(2)) / 2
-        x[idx2] = @. sqrt(2) * erfcinv(2 * (pl - (pl - pu) * $(rand(length(tl)))))
+        x[idx2] = @. sqrt(2) * erfcinv(2 * (pl - (pl - pu) * $(rand(rng, length(tl)))))
     end
     return x
 end
 
-function trnd(lb::T, ub::T) where {T}
-    x = randn(length(lb))
+@inline function trnd(rng, l::T, u::T) where T <: AbstractFloat
+    while true
+        x = randn(rng)
+        (x >= l) & (x <= u) && return x
+    end
+end
+function trnd(rng, lb::AbstractArray{T}, ub::AbstractArray{T}) where T <: AbstractFloat
+    x = randn(rng, length(lb))
 
     test = @. (x < lb) | (x > ub)
     idx = findall(test)
@@ -240,7 +300,7 @@ function trnd(lb::T, ub::T) where {T}
     while d > 0
         ly = lb[idx]
         uy = ub[idx]
-        y = randn(length(uy))
+        y = randn(rng, length(uy))
         idx2 = @. (y > ly) & (y < uy)
         x[idx[idx2]] = y[idx2]
         idx = idx[.!idx2]
@@ -248,29 +308,39 @@ function trnd(lb::T, ub::T) where {T}
     end
 
     return x
+    
 end
 
-function ntail(lb::T, ub::T) where {T}
+# tail case: Rayleigh proposal with accept-reject (Botev 2017, sec. 3)
+@inline function ntail(rng, l::T, u::T) where T <: AbstractFloat
+    c = T(0.5) * l * l
+    f = expm1(c - T(0.5) * u * u)  
+    while true
+        x = c - log1p(rand(rng) * f)
+        r = rand(rng)
+        r * r * x < c && return sqrt(2 * x)
+    end
+end
+function ntail(rng, lb::AbstractArray{T}, ub::AbstractArray{T}) where {T}
     c = @. lb^2 / 2
     n = length(lb)
     f = @. expm1(c - ub^2 / 2)
-    x = @. c - log(1 + $(rand(n)) * f)
-    props = @. ($(rand(n))^2 * x)
+    x = @. c - log(1 + $(rand(rng, n)) * f)
+    props = @. ($(rand(rng, n))^2 * x)
     rejected = findall(props .> c) # Find rejected
     d = length(rejected)
     while d > 0
         cy = c[rejected]
-        y = @. cy - log(1 + $(rand(d)) * f[rejected])
-        idx = findall((rand(d) .^ 2 .* y) .< cy) # Find accepted
+        y = @. cy - log(1 + $(rand(rng, d)) * f[rejected])
+        idx = findall((rand(rng, d) .^ 2 .* y) .< cy) # Find accepted
         x[rejected[idx]] = y[idx]
         deleteat!(rejected, idx)
         d = length(rejected)
     end
-
     return @. sqrt(2 * x)
 end
 
-function compute_factors!(d::TruncatedMVNormal)
+function compute_factors!(d::TruncatedMVNormal{T}) where T
     d.L_unscaled, d.perm = colperm!(d)
 
     D = diag(d.L_unscaled)
@@ -291,35 +361,40 @@ function compute_factors!(d::TruncatedMVNormal)
     sol = solve(prob)
 
     d.x = sol.u[begin:d.dim-1]
-    d.mu = sol.u[d.dim:end]
+    d.mu = push!(collect(T, sol.u[d.dim:end]), zero(T))
 
     d.psistar = [psy(d, d.x, d.mu)]
 
 end
 
-function psy(d::TruncatedMVNormal, xd, mud)
-    x = vcat(xd, [0.0])
-    mu = vcat(mud, [0.0])
-
+function psy(d::TruncatedMVNormal, xd::AbstractArray{T}, mu::AbstractArray{T}) where T
+    x = vcat(xd, zeros(T, 1))
     c = d.L * x
-
-    lt = @. d.lb - mu - c
-    ut = @. d.ub - mu - c
-
-    sum(lnNormalProb(lt, ut) .+ 0.5 .* mu .^ 2 .- x .* mu)
+    #lt = @. d.lb - mu - c
+    #ut = @. d.ub - mu - c
+    #sum(lnNormalProb(lt, ut) .+ 0.5 .* mu .^ 2 .- x .* mu)
+    #lnp = lnNormalProb(lt, ut)
+    #sum(@. lnp + 0.5 * mu * mu - x * mu)
+    result = zero(T)
+    @inbounds @simd for i in 1:length(c)
+        mui = mu[i]
+        ci  = c[i]
+        result += lnNormalProb(d.lb[i] - mui - ci, d.ub[i] - mui - ci) + 0.5 * mui * mui - x[i] * mui
+    end
+    return result 
 end
 
 function gradpsi(y, p)
     L, l, u = p
     d = length(u)
     c = zeros(Float64, d)
-    mu = deepcopy(c)
-    x = deepcopy(c)
+    mu = copy(c)
+    x = copy(c)
 
     x[begin:d-1] = y[begin:d-1]
     mu[begin:d-1] = y[d:end]
 
-    c[2:d] = L[2:d, :] * x
+    c[2:d] = view(L, 2:d, :) * x
     lt = @. l - mu - c
     ut = @. u - mu - c
 
@@ -329,7 +404,7 @@ function gradpsi(y, p)
     P = pl - pu
 
     # Gradient
-    dfdx = -mu[1:d-1] + transpose((transpose(P) * L[:, 1:d-1]))
+    dfdx = -mu[1:d-1] + transpose((transpose(P) * view(L, :, 1:d-1)))
     dfdm = @. mu - x + P
     grad = cat(dfdx, dfdm[begin:end-1], dims=1)
     return grad
@@ -345,7 +420,7 @@ function jacpsi(y, p)
     x[begin:d-1] = y[begin:d-1]
     mu[begin:d-1] = y[d:end]
 
-    c[2:d] = L[2:d, :] * x
+    c[2:d] = view(L, 2:d, :) * x
     lt = @. l - mu - c
     ut = @. u - mu - c
 
@@ -379,12 +454,17 @@ function colperm!(d::TruncatedMVNormal)
         pr = fill(Inf, size(z))
         i = j:d.dim
         D = diag(d.cov)
-        s = D[i] .- sum(L[i, 1:j] .^ 2, dims=2)
-        s[s.<0.0] .= 1.0e-15
+
+        Li1j = view(L, i, 1:j)
+
+        s = D[i] .- sum(Li1j .^ 2, dims=2)
+        s[s .< 0.0] .= 1.0e-15
         @. s = sqrt(s)
 
-        tl = (d.lb[i] .- L[i, 1:j] * z[1:j]) ./ s
-        tu = (d.ub[i] .- L[i, 1:j] * z[1:j]) ./ s
+        Li1jz = Li1j * z[1:j]
+
+        tl = (d.lb[i] .- Li1jz) ./ s
+        tu = (d.ub[i] .- Li1jz) ./ s
         pr[i] = lnNormalProb(tl, tu)
 
         k = argmin(pr)
@@ -402,7 +482,7 @@ function colperm!(d::TruncatedMVNormal)
         perm[jk] = perm[kj]
 
 
-        s = d.cov[j, j] - sum(L[j, 1:j] .^ 2)
+        s = d.cov[j, j] - sum(abs2, view(L, j, 1:j))
         if s < -0.01
             throw(DomainError(s, "Sigma is not a positive semi-definite"))
         elseif s < 0.0
@@ -422,11 +502,34 @@ function colperm!(d::TruncatedMVNormal)
     return L, perm
 end
 
+
+function lnNormalProb(a::T, b::T) where T <: AbstractFloat
+    iv = T(INV_SQRT2)
+    if a > zero(T)
+        ea   = erfcx(iv * a)
+        base = muladd(-T(0.5) * a, a, log(T(0.5) * ea))
+        isinf(b) && return base
+        eb = erfcx(iv * b)
+        return base + log1p(-exp(T(0.5) * (a - b) * (a + b)) * (eb / ea))
+    elseif b < zero(T)
+        ea   = erfcx(-iv * b)
+        base = muladd(-T(0.5) * b, b, log(T(0.5) * ea))
+        isinf(a) && return base
+        eb = erfcx(-iv * a)
+        return base + log1p(-exp(T(0.5) * (b - a) * (b + a)) * (eb / ea))
+    else
+        return log1p(-T(0.5) * erfc(-iv * a) - T(0.5) * erfc(iv * b))
+    end
+end
+
+lnNormalProb(a::AbstractArray, b::AbstractArray) = lnNormalProb.(a, b)
+
 """
     lnNormalProb(a, b)
 
 Accurately compute `ln(P(a<Z<b))` `where Z~N(0,1)`.
 """
+#=
 function lnNormalProb(a::T, b::T) where {T}
     p = zeros(eltype(a), size(a))
 
@@ -457,7 +560,7 @@ function lnNormalProb(a::T, b::T) where {T}
     return p
 
 end
-
+=#
 function lnPhi(x)
     @. -0.5 * x^2 - log(2) + log(erfcx(x / sqrt(2)) + 1.0e-15)
 end

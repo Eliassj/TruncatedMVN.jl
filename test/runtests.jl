@@ -1,6 +1,7 @@
 using TruncatedMVN
 using Test
 using Random
+using StableRNGs
 
 @testset "TruncatedMVN.jl" begin
 
@@ -12,13 +13,16 @@ using Random
     lb = [0.0, 0.0, 2.0]
     ub = [Inf, Inf, 4.0]
     d = TruncatedMVN.TruncatedMVNormal(μ, Σ, lb, ub)
-
+    # reproducibility 1
     Random.seed!(1)
     X = TruncatedMVN.sample(d, 10_000)
-
     Random.seed!(1)
     Y = TruncatedMVN.sample(d, 10_000)
+    @test X == Y
 
+    # reproducibility 2
+    X = TruncatedMVN.sample(Xoshiro(42), d, 1000)
+    Y = TruncatedMVN.sample(Xoshiro(42), d, 1000)
     @test X == Y
 
     # larger example
@@ -32,4 +36,7 @@ using Random
     dist_d = TruncatedMVNormal(μ, Σ, lb, ub)
     Xd = TruncatedMVN.sample(dist_d, n)
     @test all([all(lb .≤ row .≤ ub) for row in eachcol(Xd)])
+
+
+    
 end
