@@ -21,7 +21,7 @@ const INV_SQRT2 = 0.7071067811865476   # 1/sqrt(2)
 
 
 """
-
+    TruncatedMVNormal{T <: AbstractFloat}
 
 Truncated multivariate normal distribution with minimax tilting-based sampling.
 
